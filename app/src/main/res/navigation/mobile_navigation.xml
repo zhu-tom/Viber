@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/mobile_navigation"
+    app:startDestination="@+id/navigation_home">
+
+    <fragment
+        android:id="@+id/navigation_home"
+        android:name="com.tomzhu.viber.ui.home.HomeFragment"
+        android:label="@string/title_home"
+        tools:layout="@layout/fragment_home" />
+
+    <fragment
+        android:id="@+id/navigation_search"
+        android:name="com.tomzhu.viber.ui.search.SearchFragment"
+        android:label="@string/title_search"
+        tools:layout="@layout/fragment_search" >
+        <action
+            android:id="@+id/action_navigation_search_to_searchResultsFragment"
+            app:destination="@id/searchResultsFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/navigation_match"
+        android:name="com.tomzhu.viber.ui.match.MatchFragment"
+        android:label="@string/title_match"
+        tools:layout="@layout/fragment_match" >
+        <action
+            android:id="@+id/action_navigation_match_to_chatActivity"
+            app:destination="@id/chatActivity" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/navigation_notifications"
+        android:name="com.tomzhu.viber.ui.notifications.NotificationsFragment"
+        android:label="@string/title_notifications"
+        tools:layout="@layout/fragment_notifications" />
+
+
+    <fragment
+        android:id="@+id/navigation_account"
+        android:name="com.tomzhu.viber.ui.account.AccountMainFragment"
+        android:label="@string/title_account"
+        tools:layout="@layout/fragment_account_main" >
+        <action
+            android:id="@+id/action_navigation_account_to_navigation_settings"
+            app:destination="@id/navigation_settings" />
+        <action
+            android:id="@+id/action_navigation_account_to_navigation_settings2"
+            app:destination="@id/navigation_settings" />
+    </fragment>
+
+    <activity
+        android:id="@+id/navigation_settings"
+        android:name="com.tomzhu.viber.SettingsActivity"
+        android:label="@string/title_settings"
+        tools:layout="@layout/activity_settings"/>
+    <fragment
+        android:id="@+id/searchResultsFragment"
+        android:name="com.tomzhu.viber.ui.search.SearchResultsFragment"
+        android:label="fragment_search_results"
+        tools:layout="@layout/fragment_search_results" />
+    <activity
+        android:id="@+id/chatActivity"
+        android:name="com.tomzhu.viber.ChatActivity"
+        android:label="activity_chat"
+        tools:layout="@layout/activity_chat" />
+</navigation>
