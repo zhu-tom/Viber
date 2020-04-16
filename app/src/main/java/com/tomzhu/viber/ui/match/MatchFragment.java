@@ -40,6 +40,8 @@ import com.tomzhu.viber.MainActivity;
 import com.tomzhu.viber.R;
 import com.tomzhu.viber.models.ChatMessage;
 
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class MatchFragment extends Fragment {
@@ -50,6 +52,7 @@ public class MatchFragment extends Fragment {
     private FirebaseDatabase db;
     private FirebaseAuth auth;
     private AlertDialog dialog;
+    private boolean firstTime = true;
 
     public static MatchFragment newInstance() {
         return new MatchFragment();
@@ -94,11 +97,21 @@ public class MatchFragment extends Fragment {
                 final ValueEventListener queueMatchListener = new ValueEventListener() {
                     @Override
                     public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                        if (dataSnapshot.exists()) {
-                            Log.i(TAG, "Someone else matched");
-                            dialog.dismiss();
-                            pushPos.removeValue();
-                            goToChatActivity(dataSnapshot.getChildren().iterator().next().getKey(), ChatActivity.ANONYMOUS);
+                        if (firstTime) {
+                            firstTime = false;
+                        } else {
+                            if (dataSnapshot.exists()) {
+                                Log.i(TAG, "Someone else matched");
+                                currUser.child("anonChats").removeEventListener(this);
+                                dialog.dismiss();
+                                pushPos.removeValue();
+                                Iterator<DataSnapshot> itr = dataSnapshot.getChildren().iterator();
+                                DataSnapshot currItem = itr.next();
+                                while (itr.hasNext()) {
+                                    currItem = itr.next();
+                                }
+                                goToChatActivity(currItem.getKey(), ChatActivity.ANONYMOUS);
+                            }
                         }
                     }
 
@@ -122,20 +135,20 @@ public class MatchFragment extends Fragment {
                             firstChild.getRef().removeValue();
                             pushPos.removeValue();
 
-                            db.getReference("Chats").push().addValueEventListener(new ValueEventListener() {
-                                @Override
-                                public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                            HashMap<String, Object> people = new HashMap<>();
+                            people.put(auth.getUid(), false);
+                            people.put(itemUid, false);
 
+                            final DatabaseReference chatRef = db.getReference("Chats").push();
+
+                            chatRef.child("people").updateChildren(people).addOnCompleteListener(new OnCompleteListener<Void>() {
+                                @Override
+                                public void onComplete(@NonNull Task<Void> task) {
                                     dialog.dismiss();
-                                    String chatKey = dataSnapshot.getKey();
+                                    String chatKey = chatRef.getKey();
                                     db.getReference("/Users/" + itemUid).child("anonChats").child(chatKey).setValue(true);
                                     currUser.child("anonChats").child(chatKey).setValue(true);
                                     goToChatActivity(chatKey, ChatActivity.ANONYMOUS);
-                                }
-
-                                @Override
-                                public void onCancelled(@NonNull DatabaseError databaseError) {
-
                                 }
                             });
                         } else {
@@ -199,5 +212,6 @@ public class MatchFragment extends Fragment {
         Intent intent = new Intent(getContext(), ChatActivity.class);
         intent.putExtras(bundle);
         startActivity(intent);
+        dialog.dismiss();
     }
 }

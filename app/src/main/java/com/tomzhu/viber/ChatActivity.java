@@ -18,6 +18,8 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.ChildEventListener;
 import com.google.firebase.database.DataSnapshot;
@@ -40,6 +42,7 @@ public class ChatActivity extends AppCompatActivity {
     private FirebaseDatabase db;
     private FirebaseAuth auth;
     private DatabaseReference chatRef;
+    private DatabaseReference peopleRef;
 
     private String currUsername;
     private String currUid;
@@ -77,11 +80,11 @@ public class ChatActivity extends AppCompatActivity {
 
         messages = new ArrayList<>();
 
-
         layoutManager = new LinearLayoutManager(this);
         adapter = new ChatViewAdapter(messages);
         recyclerView = findViewById(R.id.messages);
-        recyclerView.setHasFixedSize(true);
+        recyclerView.setHasFixedSize(false);
+        recyclerView.setNestedScrollingEnabled(false);
         recyclerView.setAdapter(adapter);
         recyclerView.setLayoutManager(layoutManager);
 
@@ -90,7 +93,7 @@ public class ChatActivity extends AppCompatActivity {
             @Override
             public boolean onKey(View v, int keyCode, KeyEvent event) {
                 if (keyCode == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_UP) {
-                    sendMessage(toSend.getText().toString());
+                    sendMessage(toSend.getText().toString(), currUid);
                     toSend.setText("");
                     return true;
                 }
@@ -102,7 +105,7 @@ public class ChatActivity extends AppCompatActivity {
         sendBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                sendMessage(toSend.getText().toString());
+                sendMessage(toSend.getText().toString(), currUid);
                 toSend.setText("");
             }
         });
@@ -116,13 +119,24 @@ public class ChatActivity extends AppCompatActivity {
             getSupportActionBar().setTitle("Random Match");
         }
 
-        chatRef = db.getReference("Chats").child(chatId);
+        DatabaseReference reference = db.getReference("Chats").child(chatId);
+
+        peopleRef = reference.child("people");
+        chatRef = reference.child("messages");
 
         chatRef.orderByKey().addChildEventListener(new ChildEventListener() {
             @Override
             public void onChildAdded(@NonNull DataSnapshot dataSnapshot, @Nullable String s) {
                 if (dataSnapshot.exists()) {
-                    ChatMessage message = new ChatMessage(dataSnapshot.child("message").getValue().toString(), isAnon ? null:dataSnapshot.child("username").getValue().toString(), dataSnapshot.child("uid").getValue().toString());
+                    Object mUid = dataSnapshot.child("uid").getValue();
+                    ChatMessage message;
+                    if (mUid == null) {
+                        message = new ChatMessage(dataSnapshot.child("message").getValue().toString(),
+                                isAnon ? null:dataSnapshot.child("username").getValue().toString(), null);
+                    } else {
+                        message = new ChatMessage(dataSnapshot.child("message").getValue().toString(),
+                                isAnon ? null:dataSnapshot.child("username").getValue().toString(), mUid.toString());
+                    }
                     messages.add(message);
                     adapter.notifyDataSetChanged();
                 }
@@ -159,6 +173,7 @@ public class ChatActivity extends AppCompatActivity {
         layout.setLayoutParams(params);
         TextView label = new TextView(this);
         label.setText("Are you sure you want to leave?");
+        label.setLayoutParams(params);
         layout.addView(label);
 
         LinearLayout btnLayout = new LinearLayout(this);
@@ -173,8 +188,15 @@ public class ChatActivity extends AppCompatActivity {
         yesButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-
-                onBackPressed();
+                peopleRef.child(currUid).removeValue().addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> task) {
+                        if (task.isSuccessful()) {
+                            sendMessage((isAnon ? "Anonymous":currUsername) + " has left the chat", null);
+                            onBackPressed();
+                        }
+                    }
+                });
             }
         });
 
@@ -194,11 +216,11 @@ public class ChatActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    private void sendMessage(String message) {
+    private void sendMessage(String message, String uid) {
         Map<String, Object> hashMap = new HashMap<>();
         hashMap.put("message", message);
         hashMap.put("username", isAnon ? null : currUsername);
-        hashMap.put("uid", currUid);
+        hashMap.put("uid", uid);
         chatRef.push().updateChildren(hashMap);
     }
 }
