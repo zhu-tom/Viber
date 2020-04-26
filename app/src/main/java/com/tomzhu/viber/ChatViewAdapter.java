@@ -90,7 +90,7 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
             if (holder.getItemViewType() == SENDER) {
                 holder.setUsername("Me");
             } else {
-                holder.setUsername(currMessage.getSenderUser() == null ? "Anonymous":currMessage.getSenderUser());
+                holder.setUsername(currMessage.getSenderName());
             }
         }
 

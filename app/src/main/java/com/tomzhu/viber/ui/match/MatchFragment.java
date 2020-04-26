@@ -38,6 +38,7 @@ import com.google.firebase.database.ValueEventListener;
 import com.tomzhu.viber.ChatActivity;
 import com.tomzhu.viber.MainActivity;
 import com.tomzhu.viber.R;
+import com.tomzhu.viber.VideoActivity;
 import com.tomzhu.viber.models.ChatMessage;
 
 import java.util.HashMap;
@@ -49,6 +50,7 @@ public class MatchFragment extends Fragment {
 
     private MatchViewModel mViewModel;
     private Button matchBtn;
+    private Button matchVidBtn;
     private FirebaseDatabase db;
     private FirebaseAuth auth;
     private AlertDialog dialog;
@@ -77,6 +79,15 @@ public class MatchFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         matchBtn = view.findViewById(R.id.match_text_button);
+
+        matchVidBtn = view.findViewById(R.id.match_video_button);
+        matchVidBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(getContext(), VideoActivity.class));
+            }
+        });
+
         matchBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {

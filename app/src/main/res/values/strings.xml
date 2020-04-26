@@ -28,6 +28,7 @@
     <string name="add_user">Add Friend</string>
     <string name="match_text_chat">Match Text Chat</string>
     <string name="send_label">Send</string>
+    <string name="match_video_chat">Match Video Chat</string>
     <string name="large_text">
         "Material is the metaphor.\n\n"
 

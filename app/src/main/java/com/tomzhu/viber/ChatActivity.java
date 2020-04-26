@@ -46,6 +46,7 @@ public class ChatActivity extends AppCompatActivity {
 
     private String currUsername;
     private String currUid;
+    private String currName;
 
     private RecyclerView recyclerView;
     private RecyclerView.LayoutManager layoutManager;
@@ -64,11 +65,12 @@ public class ChatActivity extends AppCompatActivity {
         auth = FirebaseAuth.getInstance();
         currUid = auth.getCurrentUser().getUid();
 
-        db.getReference("Users").child(currUid).child("username").addValueEventListener(new ValueEventListener() {
+        db.getReference("Users").child(currUid).addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                 if (dataSnapshot.exists()) {
-                    currUsername = dataSnapshot.getValue().toString();
+                    currUsername = dataSnapshot.child("username").getValue().toString();
+                    currName = dataSnapshot.child("name").getValue().toString();
                 }
             }
 
@@ -132,10 +134,14 @@ public class ChatActivity extends AppCompatActivity {
                     ChatMessage message;
                     if (mUid == null) {
                         message = new ChatMessage(dataSnapshot.child("message").getValue().toString(),
-                                isAnon ? null:dataSnapshot.child("username").getValue().toString(), null);
+                                isAnon ? null:dataSnapshot.child("username").getValue().toString(),
+                                    null,
+                                        dataSnapshot.child("name").getValue().toString());
                     } else {
                         message = new ChatMessage(dataSnapshot.child("message").getValue().toString(),
-                                isAnon ? null:dataSnapshot.child("username").getValue().toString(), mUid.toString());
+                                isAnon ? null:dataSnapshot.child("username").getValue().toString(),
+                                    mUid.toString(),
+                                        dataSnapshot.child("name").getValue().toString());
                     }
                     messages.add(message);
                     adapter.notifyDataSetChanged();
@@ -221,6 +227,7 @@ public class ChatActivity extends AppCompatActivity {
         hashMap.put("message", message);
         hashMap.put("username", isAnon ? null : currUsername);
         hashMap.put("uid", uid);
+        hashMap.put("name", currName);
         chatRef.push().updateChildren(hashMap);
     }
 }

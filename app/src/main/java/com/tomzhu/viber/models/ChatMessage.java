@@ -4,11 +4,13 @@ public class ChatMessage {
     private String message;
     private String senderUser;
     private String senderUid;
+    private String senderName;
 
-    public ChatMessage(String m, String s, String u) {
+    public ChatMessage(String m, String s, String u, String n) {
         message = m;
         senderUser = s;
         senderUid = u;
+        senderName = n;
     }
 
     public String getMessage() {
@@ -21,5 +23,9 @@ public class ChatMessage {
 
     public String getSenderUser() {
         return senderUser;
+    }
+
+    public String getSenderName() {
+        return senderName;
     }
 }
