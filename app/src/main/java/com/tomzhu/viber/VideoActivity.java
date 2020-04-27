@@ -7,8 +7,11 @@ import android.os.Bundle;
 import android.se.omapi.Session;
 import android.util.JsonReader;
 import android.util.Log;
+import android.widget.Toast;
 
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 
 import org.jetbrains.annotations.Nullable;
 import org.json.JSONException;
@@ -61,19 +64,24 @@ public class VideoActivity extends AppCompatActivity {
     private OkHttpClient client;
     private WebSocket webSocket;
     private PeerConnectionObserver observer;
+    private MediaConstraints callConstraints;
+    private String otherUid;
+    private Gson gson = new Gson();
+    private SdpObserverPlaceholder sdpObserverPlaceholder = new SdpObserverPlaceholder();
 
     private List<PeerConnection.IceServer> iceServers = new ArrayList<>();
 
     private static final String TAG = "VideoActivity";
 
-    private static final class SocketListener extends WebSocketListener {
+    private final class SocketListener extends WebSocketListener {
 
         @Override
         public void onMessage(WebSocket webSocket, String text) {
             super.onMessage(webSocket, text);
             Log.i(TAG, text);
 
-            JSONObject result = null;
+            JSONObject result = new JSONObject();
+            JsonObject gsonRes = gson.fromJson(text, JsonObject.class);
 
             try {
                 result = new JSONObject(text);
@@ -81,34 +89,45 @@ public class VideoActivity extends AppCompatActivity {
                 e.printStackTrace();
             }
 
-            SessionDescription remoteSdp = null;
+            String type = null;
             try {
-                 remoteSdp = (SessionDescription) result.get("");
+                 type = (String) result.get("type");
             } catch (JSONException e) {
                 e.printStackTrace();
             }
 
-            localPeer.setRemoteDescription(new SdpObserver() {
-                @Override
-                public void onCreateSuccess(SessionDescription sessionDescription) {
-
-                }
-
-                @Override
-                public void onSetSuccess() {
-
-                }
-
-                @Override
-                public void onCreateFailure(String s) {
-
-                }
-
-                @Override
-                public void onSetFailure(String s) {
-
-                }
-            }, remoteSdp);
+            switch (type) {
+                case "connected":
+                    try {
+                        if ((boolean) result.get("success")) {
+                            Toast.makeText(VideoActivity.this, "Connection Successful", Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(VideoActivity.this, "Connection Failed", Toast.LENGTH_SHORT).show();
+                        }
+                        break;
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                    }
+                case "offer":
+                    try {
+                        handleOffer((String) result.get("offer"), (String) result.get("uid"));
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                    }
+                    break;
+                case "answer":
+                    JsonObject sdpObject = gsonRes.getAsJsonObject("answer");
+                    localPeer.setRemoteDescription(sdpObserverPlaceholder, gson.fromJson(sdpObject, SessionDescription.class));
+                    break;
+                case "candidate":
+                    JsonObject iceObject = gsonRes.getAsJsonObject("candidate");
+                    localPeer.addIceCandidate(gson.fromJson(iceObject, IceCandidate.class));
+                    break;
+                case "leave":
+                    break;
+                default:
+                    break;
+            }
         }
 
         @Override
@@ -137,12 +156,69 @@ public class VideoActivity extends AppCompatActivity {
         }
     }
 
+    private void handleOffer(String offer, String uid) {
+        localPeer.setRemoteDescription(new SdpObserver() {
+            @Override
+            public void onCreateSuccess(SessionDescription sessionDescription) {
+                localPeer.createAnswer(new SdpObserver() {
+                    @Override
+                    public void onCreateSuccess(SessionDescription sessionDescription) {
+                        localPeer.setLocalDescription(sdpObserverPlaceholder, sessionDescription);
+
+                        Map<String, Object> data = new HashMap<>();
+                        data.put("type", "answer");
+                        data.put("answer", sessionDescription);
+                        data.put("uid", uid);
+
+                        webSocket.send(gson.toJson(data));
+                    }
+
+                    @Override
+                    public void onSetSuccess() {
+
+                    }
+
+                    @Override
+                    public void onCreateFailure(String s) {
+
+                    }
+
+                    @Override
+                    public void onSetFailure(String s) {
+
+                    }
+                }, callConstraints);
+            }
+
+            @Override
+            public void onSetSuccess() {
+
+            }
+
+            @Override
+            public void onCreateFailure(String s) {
+
+            }
+
+            @Override
+            public void onSetFailure(String s) {
+
+            }
+        }, new SessionDescription(SessionDescription.Type.OFFER, offer));
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_video);
 
+        callConstraints = new MediaConstraints();
+        callConstraints.mandatory.add(new MediaConstraints.KeyValuePair("offerToReceiveAudio", "true"));
+        callConstraints.mandatory.add(new MediaConstraints.KeyValuePair("offerToReceiveVideo", "true"));
+
         auth = FirebaseAuth.getInstance();
+
+        otherUid = getIntent().getExtras().getString("otherUid");
 
         initializeWS();
 
@@ -153,16 +229,19 @@ public class VideoActivity extends AppCompatActivity {
             @Override
             public void onIceCandidate(IceCandidate iceCandidate) {
                 super.onIceCandidate(iceCandidate);
-                Map<String, String> map = new HashMap<>();
+                Map<String, Object> map = new HashMap<>();
                 map.put("type", "candidate");
                 map.put("uid", auth.getUid());
-                map.put("candidate", iceCandidate.toString());
-                webSocket.send(new JSONObject(map).toString());
+                map.put("candidate", iceCandidate);
+
+                webSocket.send(gson.toJson(map));
             }
 
             @Override
             public void onAddStream(MediaStream mediaStream) {
                 super.onAddStream(mediaStream);
+                mediaStream.videoTracks.get(0).addSink(remoteRenderer);
+                mediaStream.audioTracks.get(0); // TODO: ADD AUDIO
             }
         };
 
@@ -176,7 +255,10 @@ public class VideoActivity extends AppCompatActivity {
         SocketListener listener = new SocketListener();
         Request request = new Request.Builder().url("http://localhost:9090").build();
         webSocket = client.newWebSocket(request, listener);
-        webSocket.send("{'type':'join','uid':'" + auth.getUid() + "'}");
+        Map<String, String> data = new HashMap<>();
+        data.put("type", "join");
+        data.put("uid", auth.getUid());
+        webSocket.send(gson.toJson(data));
     }
 
     private void initializePCF() {
@@ -203,6 +285,9 @@ public class VideoActivity extends AppCompatActivity {
         localRenderer.init(rootBase.getEglBaseContext(), null);
 
         remoteRenderer = findViewById(R.id.remoteSurfaceView);
+        remoteRenderer.setMirror(true);
+        remoteRenderer.setEnableHardwareScaler(true);
+        remoteRenderer.init(rootBase.getEglBaseContext(), null);
     }
 
     private void initializeAV() {
@@ -231,21 +316,17 @@ public class VideoActivity extends AppCompatActivity {
 
     private void call() {
 
-        MediaConstraints constraints = new MediaConstraints();
-        constraints.mandatory.add(new MediaConstraints.KeyValuePair("offerToReceiveAudio", "true"));
-        constraints.mandatory.add(new MediaConstraints.KeyValuePair("offerToReceiveVideo", "true"));
-
         localPeer = peerConnectionFactory.createPeerConnection(iceServers, observer);
         localPeer.createOffer(new SdpObserver() {
             @Override
             public void onCreateSuccess(SessionDescription sessionDescription) {
 
                 // send offer to
-                Map<String, String> map = new HashMap<>();
+                Map<String, Object> map = new HashMap<>();
                 map.put("type", "offer");
-                map.put("uid", null); // TODO: INSERT UID OF OTHER USER
-                map.put("offer", sessionDescription.toString());
-                webSocket.send(new JSONObject(map).toString());
+                map.put("uid", otherUid); // TODO: INSERT UID OF OTHER USER
+                map.put("offer", sessionDescription);
+                webSocket.send(gson.toJson(map));
 
                 localPeer.setLocalDescription(new SdpObserver() {
                     @Override
@@ -284,7 +365,7 @@ public class VideoActivity extends AppCompatActivity {
             public void onSetFailure(String s) {
 
             }
-        }, constraints);
+        }, callConstraints);
 
 
     }

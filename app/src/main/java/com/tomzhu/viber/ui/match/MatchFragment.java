@@ -54,6 +54,7 @@ public class MatchFragment extends Fragment {
     private FirebaseDatabase db;
     private FirebaseAuth auth;
     private AlertDialog dialog;
+    private DatabaseReference currUser;
     private boolean firstTime = true;
 
     public static MatchFragment newInstance() {
@@ -73,6 +74,7 @@ public class MatchFragment extends Fragment {
         // TODO: Use the ViewModel
         db = FirebaseDatabase.getInstance();
         auth = FirebaseAuth.getInstance();
+        currUser = db.getReference("/Users/" + auth.getUid());
     }
 
     @Override
@@ -84,6 +86,19 @@ public class MatchFragment extends Fragment {
         matchVidBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                final DatabaseReference vidQueue = db.getReference("VideoQueue");
+                final DatabaseReference pushPos = vidQueue.push();
+
+                showDialog(getString(R.string.finding_match_label));
+                dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+                    @Override
+                    public void onDismiss(DialogInterface dialog) {
+                        pushPos.removeValue();
+                    }
+                });
+
+
+
                 startActivity(new Intent(getContext(), VideoActivity.class));
             }
         });
@@ -95,7 +110,6 @@ public class MatchFragment extends Fragment {
 
                 final DatabaseReference queue = db.getReference("ChatQueue");
                 final DatabaseReference pushPos = queue.push();
-                final DatabaseReference currUser = db.getReference("/Users/"+auth.getUid());
 
                 dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
                     @Override
@@ -164,7 +178,7 @@ public class MatchFragment extends Fragment {
                             });
                         } else {
                             query.removeEventListener(this);
-                            addToQueue(pushPos, currUser, queueMatchListener);
+                            addToQueue(pushPos, queueMatchListener);
                         }
                     }
 
@@ -177,7 +191,11 @@ public class MatchFragment extends Fragment {
         });
     }
 
-    private void addToQueue(DatabaseReference pushPos, final DatabaseReference currUser, final ValueEventListener queueMatchListener) {
+    private void findMatch() {
+        
+    }
+
+    private void addToQueue(DatabaseReference pushPos, final ValueEventListener queueMatchListener) {
         Log.i(TAG, "Added to Queue");
         pushPos.child("uid").setValue(auth.getCurrentUser().getUid()).addOnCompleteListener(new OnCompleteListener<Void>() {
             @Override
