@@ -1,7 +1,9 @@
 package com.tomzhu.viber.ui.match;
 
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProviders;
 
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -10,10 +12,8 @@ import android.os.Bundle;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
-import androidx.navigation.NavController;
-import androidx.navigation.Navigation;
-import androidx.recyclerview.widget.RecyclerView;
 
+import android.provider.MediaStore;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -28,7 +28,6 @@ import android.widget.Toast;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.database.ChildEventListener;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
@@ -36,14 +35,11 @@ import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.Query;
 import com.google.firebase.database.ValueEventListener;
 import com.tomzhu.viber.ChatActivity;
-import com.tomzhu.viber.MainActivity;
 import com.tomzhu.viber.R;
 import com.tomzhu.viber.VideoActivity;
-import com.tomzhu.viber.models.ChatMessage;
 
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class MatchFragment extends Fragment {
     private final static String TAG = "MatchFragment";
@@ -56,6 +52,10 @@ public class MatchFragment extends Fragment {
     private AlertDialog dialog;
     private DatabaseReference currUser;
     private boolean firstTime = true;
+
+    private interface Callback {
+        void goToActivity(String key, int type);
+    }
 
     public static MatchFragment newInstance() {
         return new MatchFragment();
@@ -86,116 +86,104 @@ public class MatchFragment extends Fragment {
         matchVidBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                final DatabaseReference vidQueue = db.getReference("VideoQueue");
-                final DatabaseReference pushPos = vidQueue.push();
-
-                showDialog(getString(R.string.finding_match_label));
-                dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
-                    @Override
-                    public void onDismiss(DialogInterface dialog) {
-                        pushPos.removeValue();
-                    }
-                });
-
-
-
-                startActivity(new Intent(getContext(), VideoActivity.class));
+                findMatch(db.getReference("VideoQueue"), db.getReference("VideoChats"), "anonVideos",
+                        ((key, type) -> MatchFragment.this.goToActivity(VideoActivity.class, key, type)));
             }
         });
 
         matchBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                showDialog(getString(R.string.finding_match_label));
-
-                final DatabaseReference queue = db.getReference("ChatQueue");
-                final DatabaseReference pushPos = queue.push();
-
-                dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
-                    @Override
-                    public void onDismiss(DialogInterface dialog) {
-                        pushPos.removeValue();
-                    }
-                });
-
-
-                final ValueEventListener queueMatchListener = new ValueEventListener() {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                        if (firstTime) {
-                            firstTime = false;
-                        } else {
-                            if (dataSnapshot.exists()) {
-                                Log.i(TAG, "Someone else matched");
-                                currUser.child("anonChats").removeEventListener(this);
-                                dialog.dismiss();
-                                pushPos.removeValue();
-                                Iterator<DataSnapshot> itr = dataSnapshot.getChildren().iterator();
-                                DataSnapshot currItem = itr.next();
-                                while (itr.hasNext()) {
-                                    currItem = itr.next();
-                                }
-                                goToChatActivity(currItem.getKey(), ChatActivity.ANONYMOUS);
-                            }
-                        }
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                };
-
-                final Query query = queue.orderByKey().limitToFirst(1);
-
-                query.addValueEventListener(new ValueEventListener() {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                        if (dataSnapshot.exists()) {
-                            Log.i(TAG, "Found Existing Queue Item");
-                            query.removeEventListener(this);
-
-                            DataSnapshot firstChild = dataSnapshot.getChildren().iterator().next();
-                            final String itemUid = firstChild.child("uid").getValue().toString();
-                            firstChild.getRef().removeValue();
-                            pushPos.removeValue();
-
-                            HashMap<String, Object> people = new HashMap<>();
-                            people.put(auth.getUid(), false);
-                            people.put(itemUid, false);
-
-                            final DatabaseReference chatRef = db.getReference("Chats").push();
-
-                            chatRef.child("people").updateChildren(people).addOnCompleteListener(new OnCompleteListener<Void>() {
-                                @Override
-                                public void onComplete(@NonNull Task<Void> task) {
-                                    dialog.dismiss();
-                                    String chatKey = chatRef.getKey();
-                                    db.getReference("/Users/" + itemUid).child("anonChats").child(chatKey).setValue(true);
-                                    currUser.child("anonChats").child(chatKey).setValue(true);
-                                    goToChatActivity(chatKey, ChatActivity.ANONYMOUS);
-                                }
-                            });
-                        } else {
-                            query.removeEventListener(this);
-                            addToQueue(pushPos, queueMatchListener);
-                        }
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                });
+                findMatch(db.getReference("ChatQueue"), db.getReference("Chats"), "anonChats",
+                        (key, type) -> MatchFragment.this.goToActivity(ChatActivity.class, key, type));
             }
         });
     }
 
-    private void findMatch() {
-        
+    private void findMatch(DatabaseReference queue, DatabaseReference dbRef, String userChats, Callback callback) {
+        showDialog(getString(R.string.finding_match_label));
+
+        final DatabaseReference pushPos = queue.push();
+
+        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface dialog) {
+                pushPos.removeValue();
+            }
+        });
+
+
+        final ValueEventListener queueMatchListener = new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                if (firstTime) {
+                    firstTime = false;
+                } else {
+                    if (dataSnapshot.exists()) {
+                        Log.i(TAG, "Someone else matched");
+                        currUser.child(userChats).removeEventListener(this);
+                        dialog.dismiss();
+                        pushPos.removeValue();
+                        Iterator<DataSnapshot> itr = dataSnapshot.getChildren().iterator();
+                        DataSnapshot currItem = itr.next();
+                        while (itr.hasNext()) {
+                            currItem = itr.next();
+                        }
+                        callback.goToActivity(currItem.getKey(), ChatActivity.ANONYMOUS);
+                    }
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+
+            }
+        };
+
+        final Query query = queue.orderByKey().limitToFirst(1);
+
+        query.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                if (dataSnapshot.exists()) {
+                    Log.i(TAG, "Found Existing Queue Item");
+                    query.removeEventListener(this);
+
+                    DataSnapshot firstChild = dataSnapshot.getChildren().iterator().next();
+                    final String itemUid = firstChild.child("uid").getValue().toString();
+                    firstChild.getRef().removeValue();
+                    pushPos.removeValue();
+
+                    HashMap<String, Object> people = new HashMap<>();
+                    people.put(auth.getUid(), false);
+                    people.put(itemUid, false);
+
+                    final DatabaseReference chatRef = dbRef.push();
+
+                    chatRef.child("people").updateChildren(people).addOnCompleteListener(new OnCompleteListener<Void>() {
+                        @Override
+                        public void onComplete(@NonNull Task<Void> task) {
+                            dialog.dismiss();
+                            String chatKey = chatRef.getKey();
+                            db.getReference("/Users/" + itemUid).child(userChats).child(chatKey).setValue(true);
+                            currUser.child(userChats).child(chatKey).setValue(true);
+                            callback.goToActivity(chatKey, ChatActivity.ANONYMOUS);
+                        }
+                    });
+                } else {
+                    query.removeEventListener(this);
+                    addToQueue(pushPos, queueMatchListener, userChats);
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+
+            }
+        });
     }
 
-    private void addToQueue(DatabaseReference pushPos, final ValueEventListener queueMatchListener) {
+    private void addToQueue(DatabaseReference pushPos, final ValueEventListener queueMatchListener, String userChats) {
         Log.i(TAG, "Added to Queue");
         pushPos.child("uid").setValue(auth.getCurrentUser().getUid()).addOnCompleteListener(new OnCompleteListener<Void>() {
             @Override
@@ -203,7 +191,7 @@ public class MatchFragment extends Fragment {
                 if (!task.isSuccessful()) {
                     Toast.makeText(getContext(), "Error adding to queue.", Toast.LENGTH_SHORT).show();
                 } else {
-                    currUser.child("anonChats").addValueEventListener(queueMatchListener);
+                    currUser.child(userChats).addValueEventListener(queueMatchListener);
                 }
             }
         });
@@ -233,12 +221,12 @@ public class MatchFragment extends Fragment {
         dialog.show();
     }
 
-    private void goToChatActivity(String chatKey, int anonymous) {
+    private void goToActivity(Class<?> activity, String chatKey, int anonymous) {
         showDialog("Connecting...");
         Bundle bundle = new Bundle();
         bundle.putString("chatId", chatKey);
         bundle.putInt("type", anonymous);
-        Intent intent = new Intent(getContext(), ChatActivity.class);
+        Intent intent = new Intent(getContext(), activity);
         intent.putExtras(bundle);
         startActivity(intent);
         dialog.dismiss();
