@@ -9,20 +9,28 @@
     <org.webrtc.SurfaceViewRenderer
         android:id="@+id/remoteSurfaceView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:translationZ="10dp"
-        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_height="300dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
     <org.webrtc.SurfaceViewRenderer
         android:id="@+id/localSurfaceView"
-        android:layout_width="96dp"
-        android:layout_height="168dp"
-        android:layout_marginEnd="32dp"
-        android:layout_marginBottom="32dp"
+        android:layout_width="match_parent"
+        android:layout_height="300dp"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/remoteSurfaceView" />
+
+    <Button
+        android:id="@+id/join_call"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="156dp"
+        android:layout_marginTop="512dp"
+        android:text="@string/join_call_btn"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

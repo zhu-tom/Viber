@@ -35,6 +35,7 @@ import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.Query;
 import com.google.firebase.database.ValueEventListener;
 import com.tomzhu.viber.ChatActivity;
+import com.tomzhu.viber.ChildEventListener;
 import com.tomzhu.viber.R;
 import com.tomzhu.viber.VideoActivity;
 
@@ -51,6 +52,7 @@ public class MatchFragment extends Fragment {
     private FirebaseAuth auth;
     private AlertDialog dialog;
     private DatabaseReference currUser;
+    private String otherUid;
     private boolean firstTime = true;
 
     private interface Callback {
@@ -81,6 +83,8 @@ public class MatchFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         matchBtn = view.findViewById(R.id.match_text_button);
+
+        otherUid = null;
 
         matchVidBtn = view.findViewById(R.id.match_video_button);
         matchVidBtn.setOnClickListener(new View.OnClickListener() {
@@ -122,13 +126,13 @@ public class MatchFragment extends Fragment {
                     if (dataSnapshot.exists()) {
                         Log.i(TAG, "Someone else matched");
                         currUser.child(userChats).removeEventListener(this);
-                        dialog.dismiss();
                         pushPos.removeValue();
                         Iterator<DataSnapshot> itr = dataSnapshot.getChildren().iterator();
                         DataSnapshot currItem = itr.next();
                         while (itr.hasNext()) {
                             currItem = itr.next();
                         }
+                        dialog.dismiss();
                         callback.goToActivity(currItem.getKey(), ChatActivity.ANONYMOUS);
                     }
                 }
@@ -167,6 +171,7 @@ public class MatchFragment extends Fragment {
                             String chatKey = chatRef.getKey();
                             db.getReference("/Users/" + itemUid).child(userChats).child(chatKey).setValue(true);
                             currUser.child(userChats).child(chatKey).setValue(true);
+                            otherUid = itemUid;
                             callback.goToActivity(chatKey, ChatActivity.ANONYMOUS);
                         }
                     });
@@ -185,7 +190,7 @@ public class MatchFragment extends Fragment {
 
     private void addToQueue(DatabaseReference pushPos, final ValueEventListener queueMatchListener, String userChats) {
         Log.i(TAG, "Added to Queue");
-        pushPos.child("uid").setValue(auth.getCurrentUser().getUid()).addOnCompleteListener(new OnCompleteListener<Void>() {
+        pushPos.child("uid").setValue(auth.getUid()).addOnCompleteListener(new OnCompleteListener<Void>() {
             @Override
             public void onComplete(@NonNull Task<Void> task) {
                 if (!task.isSuccessful()) {
@@ -225,6 +230,7 @@ public class MatchFragment extends Fragment {
         showDialog("Connecting...");
         Bundle bundle = new Bundle();
         bundle.putString("chatId", chatKey);
+        bundle.putString("otherUid", otherUid);
         bundle.putInt("type", anonymous);
         Intent intent = new Intent(getContext(), activity);
         intent.putExtras(bundle);
