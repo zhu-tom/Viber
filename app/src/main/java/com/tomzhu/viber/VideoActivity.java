@@ -40,13 +40,17 @@ import org.webrtc.IceCandidate;
 import org.webrtc.Logging;
 import org.webrtc.MediaConstraints;
 import org.webrtc.MediaStream;
+import org.webrtc.MediaStreamTrack;
 import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
+import org.webrtc.RtpReceiver;
 import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
 import org.webrtc.SurfaceTextureHelper;
 import org.webrtc.SurfaceViewRenderer;
 import org.webrtc.VideoCapturer;
+import org.webrtc.VideoFrame;
+import org.webrtc.VideoSink;
 import org.webrtc.VideoSource;
 import org.webrtc.VideoTrack;
 
@@ -74,8 +78,6 @@ public class VideoActivity extends AppCompatActivity {
     private PeerConnectionFactory peerConnectionFactory;
     private EglBase rootBase = EglBase.create();
     private WebSocketClient webSocket;
-    private PeerConnectionObserver observer;
-    private MediaConstraints callConstraints;
     private String otherUid;
     private String chatKey;
     private Gson gson = new Gson();
@@ -87,6 +89,18 @@ public class VideoActivity extends AppCompatActivity {
     private List<PeerConnection.IceServer> iceServers = new ArrayList<>();
 
     private static final String TAG = "VideoActivity";
+
+    private static class ProxyVideoSink implements VideoSink {
+        private VideoSink target;
+        @Override synchronized public void onFrame(VideoFrame frame) {
+            if (target == null) {
+                Logging.d(TAG, "Dropping frame in proxy because target is null.");
+                return;
+            }
+            target.onFrame(frame);
+        }
+        synchronized void setTarget(VideoSink target) { this.target = target; }
+    }
 
     private void handleOffer(SessionDescription offer, String uid) {
         localPeer.setRemoteDescription(new SdpObserverPlaceholder() {
@@ -112,7 +126,6 @@ public class VideoActivity extends AppCompatActivity {
                 data.put("type", "answer");
                 data.put("answer", sessionDescription);
                 data.put("uid", uid);
-
                 webSocket.send(gson.toJson(data));
 
                 Log.i(TAG, "sent answer");
@@ -123,7 +136,7 @@ public class VideoActivity extends AppCompatActivity {
                 super.onCreateFailure(s);
                 Log.i(TAG, s);
             }
-        }, callConstraints);
+        }, new MediaConstraints());
     }
 
     @Override
@@ -133,9 +146,7 @@ public class VideoActivity extends AppCompatActivity {
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        callConstraints = new MediaConstraints();
-        callConstraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"));
-        callConstraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"));
+
 
         auth = FirebaseAuth.getInstance();
         db = FirebaseDatabase.getInstance();
@@ -275,7 +286,7 @@ public class VideoActivity extends AppCompatActivity {
         configuration.continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY;
         configuration.keyType = PeerConnection.KeyType.ECDSA;
 
-        observer = new PeerConnectionObserver() {
+        PeerConnectionObserver observer = new PeerConnectionObserver() {
             @Override
             public void onIceCandidate(IceCandidate iceCandidate) {
                 super.onIceCandidate(iceCandidate);
@@ -288,11 +299,25 @@ public class VideoActivity extends AppCompatActivity {
             }
 
             @Override
+            public void onAddTrack(RtpReceiver rtpReceiver, MediaStream[] mediaStreams) {
+                super.onAddTrack(rtpReceiver, mediaStreams);
+                MediaStreamTrack track = rtpReceiver.track();
+                if (track instanceof VideoTrack) {
+                    Log.i(TAG, "got video track");
+                    VideoTrack remoteVideoTrack = (VideoTrack) track;
+                    remoteVideoTrack.setEnabled(true);
+                    ProxyVideoSink sink = new ProxyVideoSink();
+                    sink.setTarget(localRenderer);
+                    remoteVideoTrack.addSink(sink);
+                }
+            }
+
+            @Override
             public void onAddStream(MediaStream mediaStream) {
                 super.onAddStream(mediaStream);
-                Log.i(TAG, "got stream");
-                remoteRenderer.setVisibility(View.VISIBLE);
-                mediaStream.videoTracks.get(0).addSink(remoteRenderer);
+//                Log.i(TAG, "got stream");
+//                remoteRenderer.setVisibility(View.VISIBLE);
+//                mediaStream.videoTracks.get(0).addSink(remoteRenderer);
                 //mediaStream.audioTracks.get(0); // TODO: ADD AUDIO
             }
         };
@@ -337,19 +362,20 @@ public class VideoActivity extends AppCompatActivity {
     private void call() {
         Log.i(TAG, "calling " + otherUid);
 
+        MediaConstraints callConstraints = new MediaConstraints();
+        callConstraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"));
+        callConstraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"));
+
         localPeer.createOffer(new SdpObserverPlaceholder() {
             @Override
             public void onCreateSuccess(SessionDescription sessionDescription) {
-
+                localPeer.setLocalDescription(new SdpObserverPlaceholder(), sessionDescription);
                 // send offer to
                 Map<String, Object> map = new HashMap<>();
                 map.put("type", "offer");
                 map.put("uid", otherUid); // TODO: INSERT UID OF OTHER USER
                 map.put("offer", sessionDescription);
                 webSocket.send(gson.toJson(map));
-
-                localPeer.setLocalDescription(new SdpObserverPlaceholder(), sessionDescription);
-
             }
         }, callConstraints);
 
