@@ -56,7 +56,7 @@ public class MatchFragment extends Fragment {
     private boolean firstTime = true;
 
     private interface Callback {
-        void goToActivity(String key, int type);
+        void goToActivity(String key, int type, boolean isCaller);
     }
 
     public static MatchFragment newInstance() {
@@ -91,7 +91,7 @@ public class MatchFragment extends Fragment {
             @Override
             public void onClick(View v) {
                 findMatch(db.getReference("VideoQueue"), db.getReference("VideoChats"), "anonVideos",
-                        ((key, type) -> MatchFragment.this.goToActivity(VideoActivity.class, key, type)));
+                        ((key, type, isCaller) -> MatchFragment.this.goToActivity(VideoActivity.class, key, type, isCaller)));
             }
         });
 
@@ -99,7 +99,7 @@ public class MatchFragment extends Fragment {
             @Override
             public void onClick(View v) {
                 findMatch(db.getReference("ChatQueue"), db.getReference("Chats"), "anonChats",
-                        (key, type) -> MatchFragment.this.goToActivity(ChatActivity.class, key, type));
+                        (key, type, isCaller) -> MatchFragment.this.goToActivity(ChatActivity.class, key, type, isCaller));
             }
         });
     }
@@ -132,8 +132,9 @@ public class MatchFragment extends Fragment {
                         while (itr.hasNext()) {
                             currItem = itr.next();
                         }
+                        otherUid = currItem.getValue().toString();
                         dialog.dismiss();
-                        callback.goToActivity(currItem.getKey(), ChatActivity.ANONYMOUS);
+                        callback.goToActivity(currItem.getKey(), ChatActivity.ANONYMOUS, false);
                     }
                 }
             }
@@ -169,10 +170,10 @@ public class MatchFragment extends Fragment {
                         public void onComplete(@NonNull Task<Void> task) {
                             dialog.dismiss();
                             String chatKey = chatRef.getKey();
-                            db.getReference("/Users/" + itemUid).child(userChats).child(chatKey).setValue(true);
+                            db.getReference("/Users/" + itemUid).child(userChats).child(chatKey).setValue(auth.getUid());
                             currUser.child(userChats).child(chatKey).setValue(true);
                             otherUid = itemUid;
-                            callback.goToActivity(chatKey, ChatActivity.ANONYMOUS);
+                            callback.goToActivity(chatKey, ChatActivity.ANONYMOUS, true);
                         }
                     });
                 } else {
@@ -226,12 +227,13 @@ public class MatchFragment extends Fragment {
         dialog.show();
     }
 
-    private void goToActivity(Class<?> activity, String chatKey, int anonymous) {
+    private void goToActivity(Class<?> activity, String chatKey, int anonymous, boolean isCaller) {
         showDialog("Connecting...");
         Bundle bundle = new Bundle();
         bundle.putString("chatId", chatKey);
         bundle.putString("otherUid", otherUid);
         bundle.putInt("type", anonymous);
+        bundle.putBoolean("isCaller", isCaller);
         Intent intent = new Intent(getContext(), activity);
         intent.putExtras(bundle);
         startActivity(intent);

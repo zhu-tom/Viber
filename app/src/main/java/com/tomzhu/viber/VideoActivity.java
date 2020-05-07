@@ -44,6 +44,7 @@ import org.webrtc.MediaStreamTrack;
 import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
 import org.webrtc.RtpReceiver;
+import org.webrtc.RtpTransceiver;
 import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
 import org.webrtc.SurfaceTextureHelper;
@@ -85,6 +86,7 @@ public class VideoActivity extends AppCompatActivity {
     private SdpObserverPlaceholder sdpObserverPlaceholder = new SdpObserverPlaceholder();
     private VideoCapturer videoCapturer;
     private Button joinCall;
+    private boolean isCaller;
 
     private List<PeerConnection.IceServer> iceServers = new ArrayList<>();
 
@@ -144,9 +146,9 @@ public class VideoActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_video);
 
+        Log.i(TAG, "onCreate");
+
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-
 
         auth = FirebaseAuth.getInstance();
         db = FirebaseDatabase.getInstance();
@@ -155,6 +157,7 @@ public class VideoActivity extends AppCompatActivity {
         if (extras != null) {
             otherUid = extras.getString("otherUid");
             chatKey = extras.getString("chatId");
+            isCaller = extras.getBoolean("isCaller");
         }
 
         initializeViews();
@@ -191,8 +194,6 @@ public class VideoActivity extends AppCompatActivity {
 
                 @Override
                 public void onMessage(String message) {
-                    Log.i(TAG, message);
-
                     JsonObject gsonRes = gson.fromJson(message, JsonObject.class);
 
                     String type = gsonRes.get("type").getAsString();
@@ -200,7 +201,7 @@ public class VideoActivity extends AppCompatActivity {
                         case "connected":
                             if (gsonRes.get("success").getAsBoolean()) {
                                 Log.i(TAG, "connection successful");
-                                if (!offered && otherUid != null) {
+                                if (!offered && otherUid != null && isCaller) {
                                     call();
                                 }
                             } else {
@@ -231,8 +232,10 @@ public class VideoActivity extends AppCompatActivity {
                             }, gson.fromJson(sdpObject, SessionDescription.class));
                             break;
                         case "candidate":
-                            JsonObject iceObject = gsonRes.getAsJsonObject("candidate");
-                            localPeer.addIceCandidate(gson.fromJson(iceObject, IceCandidate.class));
+                            //Log.i(TAG, "received ice candidate");
+                            IceCandidate candidate = gson.fromJson(gsonRes.getAsJsonObject("candidate"), IceCandidate.class);
+                            Log.i(TAG, "received " + candidate.toString());
+                            localPeer.addIceCandidate(candidate);
                             break;
                         case "leave":
                             break;
@@ -275,7 +278,7 @@ public class VideoActivity extends AppCompatActivity {
                 .setOptions(options)
                 .createPeerConnectionFactory();
 
-        iceServers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302")
+        iceServers.add(PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302")
                 .setTlsCertPolicy(PeerConnection.TlsCertPolicy.TLS_CERT_POLICY_INSECURE_NO_CHECK)
                 .createIceServer());
 
@@ -293,9 +296,17 @@ public class VideoActivity extends AppCompatActivity {
 
                 Map<String, Object> map = new HashMap<>();
                 map.put("type", "candidate");
-                map.put("uid", auth.getUid());
+                map.put("uid", otherUid);
                 map.put("candidate", iceCandidate);
                 webSocket.send(gson.toJson(map));
+
+                Log.i(TAG, "sent " + iceCandidate.toString());
+            }
+
+            @Override
+            public void onIceConnectionChange(PeerConnection.IceConnectionState iceConnectionState) {
+                super.onIceConnectionChange(iceConnectionState);
+                Log.i(TAG, iceConnectionState.toString());
             }
 
             @Override
@@ -307,7 +318,7 @@ public class VideoActivity extends AppCompatActivity {
                     VideoTrack remoteVideoTrack = (VideoTrack) track;
                     remoteVideoTrack.setEnabled(true);
                     ProxyVideoSink sink = new ProxyVideoSink();
-                    sink.setTarget(localRenderer);
+                    sink.setTarget(remoteRenderer);
                     remoteVideoTrack.addSink(sink);
                 }
             }
@@ -362,6 +373,8 @@ public class VideoActivity extends AppCompatActivity {
     private void call() {
         Log.i(TAG, "calling " + otherUid);
 
+        offered = true;
+
         MediaConstraints callConstraints = new MediaConstraints();
         callConstraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"));
         callConstraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"));
@@ -373,7 +386,7 @@ public class VideoActivity extends AppCompatActivity {
                 // send offer to
                 Map<String, Object> map = new HashMap<>();
                 map.put("type", "offer");
-                map.put("uid", otherUid); // TODO: INSERT UID OF OTHER USER
+                map.put("uid", otherUid);
                 map.put("offer", sessionDescription);
                 webSocket.send(gson.toJson(map));
             }
