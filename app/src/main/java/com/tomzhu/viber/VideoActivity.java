@@ -33,6 +33,7 @@ import org.webrtc.Camera1Enumerator;
 import org.webrtc.Camera2Enumerator;
 import org.webrtc.CameraEnumerator;
 import org.webrtc.CameraVideoCapturer;
+import org.webrtc.CandidatePairChangeEvent;
 import org.webrtc.DefaultVideoDecoderFactory;
 import org.webrtc.DefaultVideoEncoderFactory;
 import org.webrtc.EglBase;
@@ -232,24 +233,8 @@ public class VideoActivity extends AppCompatActivity {
                             break;
                         case "answer":
                             Log.i(TAG, "received answer");
-                            hasAnswer = true;
-                            JsonObject sdpObject = gsonRes.getAsJsonObject("answer");
-                            localPeer.setRemoteDescription(new SdpObserverPlaceholder() {
-                                @Override
-                                public void onSetSuccess() {
-                                    super.onSetSuccess();
-                                    Log.i(TAG, "set remote sdp");
-                                    for (IceCandidate candidate : iceCandidates) {
-                                        sendCandidate(candidate);
-                                    }
-                                }
-
-                                @Override
-                                public void onSetFailure(String s) {
-                                    super.onSetFailure(s);
-                                    Log.i(TAG, s);
-                                }
-                            }, gson.fromJson(sdpObject, SessionDescription.class));
+                            SessionDescription remoteSDP = gson.fromJson(gsonRes.getAsJsonObject("answer"), SessionDescription.class);
+                            answer(remoteSDP);
                             break;
                         case "candidate":
                             IceCandidate candidate = gson.fromJson(gsonRes.getAsJsonObject("candidate"), IceCandidate.class);
@@ -279,6 +264,26 @@ public class VideoActivity extends AppCompatActivity {
         catch (URISyntaxException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private void answer(SessionDescription remoteSDP) {
+        hasAnswer = true;
+        localPeer.setRemoteDescription(new SdpObserverPlaceholder() {
+            @Override
+            public void onSetSuccess() {
+                super.onSetSuccess();
+                Log.i(TAG, "set remote sdp");
+                for (IceCandidate candidate : iceCandidates) {
+                    sendCandidate(candidate);
+                }
+            }
+
+            @Override
+            public void onSetFailure(String s) {
+                super.onSetFailure(s);
+                Log.i(TAG, s);
+            }
+        }, remoteSDP);
     }
 
     private void initializePCF() {
@@ -311,9 +316,9 @@ public class VideoActivity extends AppCompatActivity {
     }
 
     private void createPeerConnection() {
-        iceServers.add(PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302")
-                .setTlsCertPolicy(PeerConnection.TlsCertPolicy.TLS_CERT_POLICY_INSECURE_NO_CHECK)
-                .createIceServer());
+        iceServers.add(PeerConnection.IceServer.builder("turn:numb.viagenie.ca")
+                .setUsername("webrtc@live.com")
+                .setPassword("muazkh").createIceServer());
 
         PeerConnection.RTCConfiguration configuration = new PeerConnection.RTCConfiguration(iceServers);
         configuration.tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.DISABLED;
@@ -337,13 +342,34 @@ public class VideoActivity extends AppCompatActivity {
             @Override
             public void onIceConnectionChange(PeerConnection.IceConnectionState iceConnectionState) {
                 super.onIceConnectionChange(iceConnectionState);
-                Log.i(TAG, iceConnectionState.toString());
+                Log.i(TAG, "ice connection state: " + iceConnectionState.toString());
+            }
+
+            @Override
+            public void onConnectionChange(PeerConnection.PeerConnectionState newState) {
+                Log.i(TAG, "connection state: " + newState.toString());
+            }
+
+            @Override
+            public void onSignalingChange(PeerConnection.SignalingState signalingState) {
+                super.onSignalingChange(signalingState);
+                Log.i(TAG, "signaling state: " + signalingState.toString());
+            }
+
+            @Override
+            public void onStandardizedIceConnectionChange(PeerConnection.IceConnectionState newState) {
+                Log.i(TAG, "standardized state: " + newState.toString());
+            }
+
+            @Override
+            public void onSelectedCandidatePairChanged(CandidatePairChangeEvent event) {
+                Log.i(TAG, "candidate pair changed: " + event.reason);
             }
 
             @Override
             public void onIceGatheringChange(PeerConnection.IceGatheringState iceGatheringState) {
                 super.onIceGatheringChange(iceGatheringState);
-                Log.i(TAG, iceGatheringState.toString());
+                Log.i(TAG, "gathering state: " + iceGatheringState.toString());
             }
 
             @Override
