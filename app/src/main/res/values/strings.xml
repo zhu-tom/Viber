@@ -29,7 +29,7 @@
     <string name="match_text_chat">Match Text Chat</string>
     <string name="send_label">Send</string>
     <string name="match_video_chat">Match Video Chat</string>
-    <string name="join_call_btn">Join Call</string>
+    <string name="leave_call_btn">Leave Call</string>
     <string name="large_text">
         "Material is the metaphor.\n\n"
 

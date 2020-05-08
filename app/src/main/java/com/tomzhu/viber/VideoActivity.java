@@ -5,7 +5,6 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.navigation.ActivityNavigator;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
@@ -14,22 +13,18 @@ import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
-import android.widget.Toast;
 
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
-import org.json.JSONException;
-import org.json.JSONObject;
 import org.webrtc.AudioSource;
 import org.webrtc.AudioTrack;
-import org.webrtc.Camera1Enumerator;
 import org.webrtc.Camera2Enumerator;
 import org.webrtc.CameraEnumerator;
 import org.webrtc.CameraVideoCapturer;
@@ -38,21 +33,14 @@ import org.webrtc.DefaultVideoDecoderFactory;
 import org.webrtc.DefaultVideoEncoderFactory;
 import org.webrtc.EglBase;
 import org.webrtc.IceCandidate;
-import org.webrtc.Logging;
 import org.webrtc.MediaConstraints;
 import org.webrtc.MediaStream;
-import org.webrtc.MediaStreamTrack;
 import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
-import org.webrtc.RtpReceiver;
-import org.webrtc.RtpTransceiver;
-import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
 import org.webrtc.SurfaceTextureHelper;
 import org.webrtc.SurfaceViewRenderer;
 import org.webrtc.VideoCapturer;
-import org.webrtc.VideoFrame;
-import org.webrtc.VideoSink;
 import org.webrtc.VideoSource;
 import org.webrtc.VideoTrack;
 
@@ -60,17 +48,8 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Queue;
-
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import okhttp3.WebSocket;
-import okhttp3.WebSocketListener;
-import okio.ByteString;
 
 public class VideoActivity extends AppCompatActivity {
     private static final int REQUEST_VID_AUD_CODE = 0;
@@ -90,8 +69,10 @@ public class VideoActivity extends AppCompatActivity {
     private boolean offered = false;
     private boolean hasAnswer;
     private SdpObserverPlaceholder sdpObserverPlaceholder = new SdpObserverPlaceholder();
+    private DatabaseReference socketRef;
+    private DatabaseReference remoteSocketRef;
     private VideoCapturer videoCapturer;
-    private Button joinCall;
+    private Button leaveCall;
     private boolean isCaller;
     private List<IceCandidate> iceCandidates;
 
@@ -99,19 +80,7 @@ public class VideoActivity extends AppCompatActivity {
 
     private static final String TAG = "VideoActivity";
 
-    private static class ProxyVideoSink implements VideoSink {
-        private VideoSink target;
-        @Override synchronized public void onFrame(VideoFrame frame) {
-            if (target == null) {
-                Logging.d(TAG, "Dropping frame in proxy because target is null.");
-                return;
-            }
-            target.onFrame(frame);
-        }
-        synchronized void setTarget(VideoSink target) { this.target = target; }
-    }
-
-    private void handleOffer(SessionDescription offer, String uid) {
+    private void handleOffer(SessionDescription offer) {
         createPeerConnection();
 
         localPeer.setRemoteDescription(new SdpObserverPlaceholder() {
@@ -138,8 +107,9 @@ public class VideoActivity extends AppCompatActivity {
                 Map<String, Object> data = new HashMap<>();
                 data.put("type", "answer");
                 data.put("answer", sessionDescription);
-                data.put("uid", uid);
-                webSocket.send(gson.toJson(data));
+                data.put("uid", otherUid);
+                //webSocket.send(gson.toJson(data));
+                sendToRemote(data);
 
                 Log.i(TAG, "sent answer");
             }
@@ -170,6 +140,8 @@ public class VideoActivity extends AppCompatActivity {
         if (extras != null) {
             otherUid = extras.getString("otherUid");
             chatKey = extras.getString("chatId");
+            remoteSocketRef = db.getReference("/VideoChats/"+chatKey+"/socket").child(otherUid);
+            socketRef = db.getReference("/VideoChats/"+chatKey+"/socket").child(auth.getUid());
             isCaller = extras.getBoolean("isCaller");
             hasAnswer = !isCaller;
         }
@@ -177,16 +149,20 @@ public class VideoActivity extends AppCompatActivity {
         initializeViews();
         initializePCF();
         initializeAV();
-        initializeWS();
+        //initializeWS();
+        addSocketListener();
 
-        joinCall = findViewById(R.id.join_call);
-        joinCall.setOnClickListener(new View.OnClickListener() {
+        leaveCall = findViewById(R.id.leave_call);
+        leaveCall.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                //TODO
+                leave();
             }
         });
 
+        if (!offered && otherUid != null && isCaller) {
+            call();
+        }
     }
 
     private void addStreamsToPeer() {
@@ -195,6 +171,50 @@ public class VideoActivity extends AppCompatActivity {
         localStream.addTrack(localAudioTrack);
 
         localPeer.addStream(localStream);
+    }
+
+    private void addSocketListener() {
+        socketRef.addChildEventListener(new ChildEventListener() {
+            @Override
+            public void onChildAdded(@NonNull DataSnapshot dataSnapshot, @Nullable String s) {
+                super.onChildAdded(dataSnapshot, s);
+                if (dataSnapshot.exists()) {
+                    handleMessage(dataSnapshot);
+                }
+            }
+        });
+    }
+
+    private void sendToRemote(Map<String, Object> map) {
+        remoteSocketRef.push().setValue(map);
+    }
+
+    private void handleMessage(DataSnapshot res) {
+        switch (res.child("type").getValue(String.class)) {
+            case "offer":
+                offered = true;
+                Log.i(TAG, "received offer");
+                SessionDescription offer = new SessionDescription(SessionDescription.Type.OFFER, res.child("offer").child("description").getValue(String.class));
+                handleOffer(offer);
+                break;
+            case "answer":
+                Log.i(TAG, "received answer");
+                SessionDescription remoteSDP = new SessionDescription(SessionDescription.Type.ANSWER, res.child("answer").child("description").getValue(String.class));
+                answer(remoteSDP);
+                break;
+            case "candidate":
+                DataSnapshot iceData = res.child("candidate");
+                IceCandidate candidate = new IceCandidate(iceData.child("sdpMid").getValue(String.class), iceData.child("sdpMLineIndex").getValue(Integer.class), iceData.child("sdp").getValue(String.class));
+                Log.i(TAG, "received " + candidate.toString());
+                localPeer.addIceCandidate(candidate);
+                break;
+            case "leave":
+                db.getReference("/VideoChats/"+chatKey).removeValue();
+                onBackPressed();
+                break;
+            default:
+                break;
+        }
     }
 
     private void initializeWS()  {
@@ -229,7 +249,7 @@ public class VideoActivity extends AppCompatActivity {
                             offered = true;
                             Log.i(TAG, "received offer");
                             JsonObject offer = gsonRes.getAsJsonObject("offer");
-                            handleOffer(gson.fromJson(offer, SessionDescription.class), gsonRes.get("name").getAsString());
+                            handleOffer(gson.fromJson(offer, SessionDescription.class));
                             break;
                         case "answer":
                             Log.i(TAG, "received answer");
@@ -242,6 +262,7 @@ public class VideoActivity extends AppCompatActivity {
                             localPeer.addIceCandidate(candidate);
                             break;
                         case "leave":
+                            webSocket.close();
                             break;
                         default:
                             break;
@@ -392,7 +413,8 @@ public class VideoActivity extends AppCompatActivity {
         map.put("type", "candidate");
         map.put("uid", otherUid);
         map.put("candidate", iceCandidate);
-        webSocket.send(gson.toJson(map));
+        //webSocket.send(gson.toJson(map));
+        sendToRemote(map);
         Log.i(TAG, "sent " + iceCandidate.toString());
     }
 
@@ -435,13 +457,24 @@ public class VideoActivity extends AppCompatActivity {
                 map.put("type", "offer");
                 map.put("uid", otherUid);
                 map.put("offer", sessionDescription);
-                webSocket.send(gson.toJson(map));
+                //webSocket.send(gson.toJson(map));
+                sendToRemote(map);
 
                 Log.i(TAG, "calling " + otherUid);
             }
         }, callConstraints);
 
 
+    }
+
+    private void leave() {
+        HashMap<String, Object> data = new HashMap<>();
+        data.put("type", "leave");
+        data.put("uid", otherUid);
+//        webSocket.send(gson.toJson(data));
+//        webSocket.close();
+        sendToRemote(data);
+        onBackPressed();
     }
 
     private VideoCapturer getVideoCapturer(CameraVideoCapturer.CameraEventsHandler eventsHandler) {
