@@ -47,38 +47,40 @@ import org.webrtc.VideoTrack;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class VideoActivity extends AppCompatActivity {
     private static final int REQUEST_VID_AUD_CODE = 0;
-    private FirebaseAuth auth;
+    private static final String TAG = "VideoActivity";
+
     private FirebaseDatabase db;
-    private SurfaceViewRenderer localRenderer;
-    private SurfaceViewRenderer remoteRenderer;
-    private PeerConnection localPeer;
-    private AudioTrack localAudioTrack;
-    private VideoTrack localVideoTrack;
-    private PeerConnectionFactory peerConnectionFactory;
-    private EglBase rootBase = EglBase.create();
-    private WebSocketClient webSocket;
-    private String otherUid;
-    private String chatKey;
-    private Gson gson = new Gson();
-    private boolean offered = false;
-    private boolean hasAnswer;
-    private SdpObserverPlaceholder sdpObserverPlaceholder = new SdpObserverPlaceholder();
     private DatabaseReference socketRef;
     private DatabaseReference remoteSocketRef;
-    private VideoCapturer videoCapturer;
-    private Button leaveCall;
-    private boolean isCaller;
-    private List<IceCandidate> iceCandidates;
+    private DatabaseReference currUserRef;
 
+    private VideoCapturer videoCapturer;
+    private AudioTrack localAudioTrack;
+    private VideoTrack localVideoTrack;
+    private SurfaceViewRenderer localRenderer;
+    private SurfaceViewRenderer remoteRenderer;
+    private EglBase rootBase = EglBase.create();
+
+    private PeerConnection localPeer;
+    private PeerConnectionFactory peerConnectionFactory;
+    private List<IceCandidate> iceCandidates;
+    private SdpObserverPlaceholder sdpObserverPlaceholder = new SdpObserverPlaceholder();
     private List<PeerConnection.IceServer> iceServers = new ArrayList<>();
 
-    private static final String TAG = "VideoActivity";
+    //private WebSocketClient webSocket;
+    private String otherUid;
+    private String chatKey;
+    //private Gson gson = new Gson();
+    private boolean offered;
+    private boolean hasAnswer;
+    private boolean isCaller;
 
     private void handleOffer(SessionDescription offer) {
         createPeerConnection();
@@ -130,9 +132,12 @@ public class VideoActivity extends AppCompatActivity {
         Log.i(TAG, "onCreate");
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        offered = false;
 
-        auth = FirebaseAuth.getInstance();
+        FirebaseAuth auth = FirebaseAuth.getInstance();
         db = FirebaseDatabase.getInstance();
+        String currUid = auth.getUid();
+        currUserRef = db.getReference("/Users/"+currUid);
 
         iceCandidates = new ArrayList<>();
 
@@ -141,7 +146,7 @@ public class VideoActivity extends AppCompatActivity {
             otherUid = extras.getString("otherUid");
             chatKey = extras.getString("chatId");
             remoteSocketRef = db.getReference("/VideoChats/"+chatKey+"/socket").child(otherUid);
-            socketRef = db.getReference("/VideoChats/"+chatKey+"/socket").child(auth.getUid());
+            socketRef = db.getReference("/VideoChats/"+chatKey+"/socket").child(currUid);
             isCaller = extras.getBoolean("isCaller");
             hasAnswer = !isCaller;
         }
@@ -152,13 +157,8 @@ public class VideoActivity extends AppCompatActivity {
         //initializeWS();
         addSocketListener();
 
-        leaveCall = findViewById(R.id.leave_call);
-        leaveCall.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                leave();
-            }
-        });
+        Button leaveCall = findViewById(R.id.leave_call);
+        leaveCall.setOnClickListener(v -> leave());
 
         if (!offered && otherUid != null && isCaller) {
             call();
@@ -190,102 +190,108 @@ public class VideoActivity extends AppCompatActivity {
     }
 
     private void handleMessage(DataSnapshot res) {
-        switch (res.child("type").getValue(String.class)) {
-            case "offer":
-                offered = true;
-                Log.i(TAG, "received offer");
-                SessionDescription offer = new SessionDescription(SessionDescription.Type.OFFER, res.child("offer").child("description").getValue(String.class));
-                handleOffer(offer);
-                break;
-            case "answer":
-                Log.i(TAG, "received answer");
-                SessionDescription remoteSDP = new SessionDescription(SessionDescription.Type.ANSWER, res.child("answer").child("description").getValue(String.class));
-                answer(remoteSDP);
-                break;
-            case "candidate":
-                DataSnapshot iceData = res.child("candidate");
-                IceCandidate candidate = new IceCandidate(iceData.child("sdpMid").getValue(String.class), iceData.child("sdpMLineIndex").getValue(Integer.class), iceData.child("sdp").getValue(String.class));
-                Log.i(TAG, "received " + candidate.toString());
-                localPeer.addIceCandidate(candidate);
-                break;
-            case "leave":
-                db.getReference("/VideoChats/"+chatKey).removeValue();
-                onBackPressed();
-                break;
-            default:
-                break;
-        }
-    }
-
-    private void initializeWS()  {
-        try {
-            webSocket = new WebSocketClient(new URI("ws://10.0.2.2:9090")) {
-                @Override
-                public void onOpen(ServerHandshake handshakedata) {
-                    Log.i(TAG, "Connected to " + getURI());
-                    Map<String, String> data = new HashMap<>();
-                    data.put("type", "join");
-                    data.put("uid", auth.getUid());
-                    send(gson.toJson(data));
-                }
-
-                @Override
-                public void onMessage(String message) {
-                    JsonObject gsonRes = gson.fromJson(message, JsonObject.class);
-
-                    String type = gsonRes.get("type").getAsString();
-                    switch (type) {
-                        case "connected":
-                            if (gsonRes.get("success").getAsBoolean()) {
-                                Log.i(TAG, "connection successful");
-                                if (!offered && otherUid != null && isCaller) {
-                                    call();
-                                }
-                            } else {
-                                Log.i(TAG, "connection failed");
-                            }
-                            break;
-                        case "offer":
-                            offered = true;
-                            Log.i(TAG, "received offer");
-                            JsonObject offer = gsonRes.getAsJsonObject("offer");
-                            handleOffer(gson.fromJson(offer, SessionDescription.class));
-                            break;
-                        case "answer":
-                            Log.i(TAG, "received answer");
-                            SessionDescription remoteSDP = gson.fromJson(gsonRes.getAsJsonObject("answer"), SessionDescription.class);
-                            answer(remoteSDP);
-                            break;
-                        case "candidate":
-                            IceCandidate candidate = gson.fromJson(gsonRes.getAsJsonObject("candidate"), IceCandidate.class);
-                            Log.i(TAG, "received " + candidate.toString());
-                            localPeer.addIceCandidate(candidate);
-                            break;
-                        case "leave":
-                            webSocket.close();
-                            break;
-                        default:
-                            break;
+        Object type = res.child("type").getValue();
+        if (type != null) {
+            switch (type.toString()) {
+                case "offer":
+                    offered = true;
+                    Log.i(TAG, "received offer");
+                    SessionDescription offer = new SessionDescription(SessionDescription.Type.OFFER, res.child("offer").child("description").getValue(String.class));
+                    handleOffer(offer);
+                    break;
+                case "answer":
+                    Log.i(TAG, "received answer");
+                    SessionDescription remoteSDP = new SessionDescription(SessionDescription.Type.ANSWER, res.child("answer").child("description").getValue(String.class));
+                    answer(remoteSDP);
+                    break;
+                case "candidate":
+                    DataSnapshot iceData = res.child("candidate");
+                    Object sdpMLineIndex = iceData.child("sdpMLineIndex").getValue();
+                    if (sdpMLineIndex != null) {
+                        IceCandidate candidate = new IceCandidate(iceData.child("sdpMid").getValue(String.class), Integer.parseInt(sdpMLineIndex.toString()), iceData.child("sdp").getValue(String.class));
+                        Log.i(TAG, "received " + candidate.toString());
+                        localPeer.addIceCandidate(candidate);
                     }
-                }
-
-                @Override
-                public void onClose(int code, String reason, boolean remote) {
-
-                }
-
-                @Override
-                public void onError(Exception ex) {
-                    throw new RuntimeException(ex);
-                }
-            };
-
-            webSocket.connect();
-        }
-        catch (URISyntaxException e) {
-            throw new RuntimeException(e);
+                    break;
+                case "leave":
+                    db.getReference("/VideoChats/" + chatKey).removeValue();
+                    onBackPressed();
+                    break;
+                default:
+                    break;
+            }
         }
     }
+// METHOD FOR WEB SOCKET
+//    private void initializeWS()  {
+//        try {
+//            webSocket = new WebSocketClient(new URI("ws://10.0.2.2:9090")) {
+//                @Override
+//                public void onOpen(ServerHandshake handshakedata) {
+//                    Log.i(TAG, "Connected to " + getURI());
+//                    Map<String, String> data = new HashMap<>();
+//                    data.put("type", "join");
+//                    data.put("uid", auth.getUid());
+//                    send(gson.toJson(data));
+//                }
+//
+//                @Override
+//                public void onMessage(String message) {
+//                    JsonObject gsonRes = gson.fromJson(message, JsonObject.class);
+//
+//                    String type = gsonRes.get("type").getAsString();
+//                    switch (type) {
+//                        case "connected":
+//                            if (gsonRes.get("success").getAsBoolean()) {
+//                                Log.i(TAG, "connection successful");
+//                                if (!offered && otherUid != null && isCaller) {
+//                                    call();
+//                                }
+//                            } else {
+//                                Log.i(TAG, "connection failed");
+//                            }
+//                            break;
+//                        case "offer":
+//                            offered = true;
+//                            Log.i(TAG, "received offer");
+//                            JsonObject offer = gsonRes.getAsJsonObject("offer");
+//                            handleOffer(gson.fromJson(offer, SessionDescription.class));
+//                            break;
+//                        case "answer":
+//                            Log.i(TAG, "received answer");
+//                            SessionDescription remoteSDP = gson.fromJson(gsonRes.getAsJsonObject("answer"), SessionDescription.class);
+//                            answer(remoteSDP);
+//                            break;
+//                        case "candidate":
+//                            IceCandidate candidate = gson.fromJson(gsonRes.getAsJsonObject("candidate"), IceCandidate.class);
+//                            Log.i(TAG, "received " + candidate.toString());
+//                            localPeer.addIceCandidate(candidate);
+//                            break;
+//                        case "leave":
+//                            webSocket.close();
+//                            break;
+//                        default:
+//                            break;
+//                    }
+//                }
+//
+//                @Override
+//                public void onClose(int code, String reason, boolean remote) {
+//
+//                }
+//
+//                @Override
+//                public void onError(Exception ex) {
+//                    throw new RuntimeException(ex);
+//                }
+//            };
+//
+//            webSocket.connect();
+//        }
+//        catch (URISyntaxException e) {
+//            throw new RuntimeException(e);
+//        }
+//    }
 
     private void answer(SessionDescription remoteSDP) {
         hasAnswer = true;
@@ -421,19 +427,23 @@ public class VideoActivity extends AppCompatActivity {
     private void initializeAV() {
         videoCapturer = getVideoCapturer(new CameraEventsHandler());
 
-        MediaConstraints constraints = new MediaConstraints();
+        if (videoCapturer != null) {
+            MediaConstraints constraints = new MediaConstraints();
 
-        VideoSource localVideoSource = peerConnectionFactory.createVideoSource(videoCapturer.isScreencast());
+            VideoSource localVideoSource = peerConnectionFactory.createVideoSource(videoCapturer.isScreencast());
 
-        SurfaceTextureHelper helper = SurfaceTextureHelper.create(Thread.currentThread().getName(), rootBase.getEglBaseContext());
-        videoCapturer.initialize(helper, getApplicationContext(), localVideoSource.getCapturerObserver());
-        videoCapturer.startCapture(1000, 1000, 30);
+            SurfaceTextureHelper helper = SurfaceTextureHelper.create(Thread.currentThread().getName(), rootBase.getEglBaseContext());
+            videoCapturer.initialize(helper, getApplicationContext(), localVideoSource.getCapturerObserver());
+            videoCapturer.startCapture(1000, 1000, 30);
 
-        localVideoTrack = peerConnectionFactory.createVideoTrack("VidTrack", localVideoSource);
-        localVideoTrack.addSink(localRenderer);
+            localVideoTrack = peerConnectionFactory.createVideoTrack("VidTrack", localVideoSource);
+            localVideoTrack.addSink(localRenderer);
 
-        AudioSource localAudioSource = peerConnectionFactory.createAudioSource(constraints);
-        localAudioTrack = peerConnectionFactory.createAudioTrack("AudTrack", localAudioSource);
+            AudioSource localAudioSource = peerConnectionFactory.createAudioSource(constraints);
+            localAudioTrack = peerConnectionFactory.createAudioTrack("AudTrack", localAudioSource);
+        } else {
+            onBackPressed();
+        }
     }
 
     private void call() {
@@ -474,6 +484,14 @@ public class VideoActivity extends AppCompatActivity {
 //        webSocket.send(gson.toJson(data));
 //        webSocket.close();
         sendToRemote(data);
+        localPeer.close();
+        HashMap<String, Object> log = new HashMap<>();
+        data.put("type", "video");
+        data.put("otherUid", otherUid);
+        data.put("chatId", chatKey);
+        data.put("datetime", new Date().getTime());
+        currUserRef.child("recent").push().setValue(log);
+        currUserRef.child("anonVideos").removeValue();
         onBackPressed();
     }
 
@@ -508,17 +526,11 @@ public class VideoActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        switch (requestCode) {
-            case REQUEST_VID_AUD_CODE:
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
-                    videoCapturer = getVideoCapturer(new CameraEventsHandler());
-                    if (videoCapturer != null) initializeAV();
-                } else {
-                    Log.i(TAG, "Permission denied");
-                }
-                return;
-            default:
-                break;
+        if (requestCode == REQUEST_VID_AUD_CODE && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
+            videoCapturer = getVideoCapturer(new CameraEventsHandler());
+            if (videoCapturer != null) initializeAV();
+        } else {
+            Log.i(TAG, "Permission denied");
         }
     }
 }

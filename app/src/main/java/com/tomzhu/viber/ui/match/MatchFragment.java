@@ -41,13 +41,11 @@ import com.tomzhu.viber.VideoActivity;
 
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Objects;
 
 public class MatchFragment extends Fragment {
     private final static String TAG = "MatchFragment";
 
-    private MatchViewModel mViewModel;
-    private Button matchBtn;
-    private Button matchVidBtn;
     private FirebaseDatabase db;
     private FirebaseAuth auth;
     private AlertDialog dialog;
@@ -59,10 +57,6 @@ public class MatchFragment extends Fragment {
         void goToActivity(String key, int type, boolean isCaller);
     }
 
-    public static MatchFragment newInstance() {
-        return new MatchFragment();
-    }
-
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
@@ -72,7 +66,6 @@ public class MatchFragment extends Fragment {
     @Override
     public void onActivityCreated(@Nullable Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
-        mViewModel = ViewModelProviders.of(this).get(MatchViewModel.class);
         // TODO: Use the ViewModel
         db = FirebaseDatabase.getInstance();
         auth = FirebaseAuth.getInstance();
@@ -82,26 +75,16 @@ public class MatchFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
-        matchBtn = view.findViewById(R.id.match_text_button);
+        Button matchBtn = view.findViewById(R.id.match_text_button);
 
         otherUid = null;
 
-        matchVidBtn = view.findViewById(R.id.match_video_button);
-        matchVidBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                findMatch(db.getReference("VideoQueue"), db.getReference("VideoChats"), "anonVideos",
-                        ((key, type, isCaller) -> MatchFragment.this.goToActivity(VideoActivity.class, key, type, isCaller)));
-            }
-        });
+        Button matchVidBtn = view.findViewById(R.id.match_video_button);
+        matchVidBtn.setOnClickListener(v -> findMatch(db.getReference("VideoQueue"), db.getReference("VideoChats"), "anonVideos",
+                ((key, type, isCaller) -> MatchFragment.this.goToActivity(VideoActivity.class, key, type, isCaller))));
 
-        matchBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                findMatch(db.getReference("ChatQueue"), db.getReference("Chats"), "anonChats",
-                        (key, type, isCaller) -> MatchFragment.this.goToActivity(ChatActivity.class, key, type, isCaller));
-            }
-        });
+        matchBtn.setOnClickListener(v -> findMatch(db.getReference("ChatQueue"), db.getReference("Chats"), "anonChats",
+                (key, type, isCaller) -> MatchFragment.this.goToActivity(ChatActivity.class, key, type, isCaller)));
     }
 
     private void findMatch(DatabaseReference queue, DatabaseReference dbRef, String userChats, Callback callback) {
@@ -109,13 +92,7 @@ public class MatchFragment extends Fragment {
 
         final DatabaseReference pushPos = queue.push();
 
-        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
-            @Override
-            public void onDismiss(DialogInterface dialog) {
-                pushPos.removeValue();
-            }
-        });
-
+        dialog.setOnDismissListener(dialog -> pushPos.removeValue());
 
         final ValueEventListener queueMatchListener = new ValueEventListener() {
             @Override
@@ -132,9 +109,12 @@ public class MatchFragment extends Fragment {
                         while (itr.hasNext()) {
                             currItem = itr.next();
                         }
-                        otherUid = currItem.getValue().toString();
-                        dialog.dismiss();
-                        callback.goToActivity(currItem.getKey(), ChatActivity.ANONYMOUS, false);
+                        Object currItemVal = currItem.getValue();
+                        if (currItemVal != null) {
+                            otherUid = currItemVal.toString();
+                            dialog.dismiss();
+                            callback.goToActivity(currItem.getKey(), ChatActivity.ANONYMOUS, false);
+                        }
                     }
                 }
             }
@@ -150,55 +130,55 @@ public class MatchFragment extends Fragment {
         query.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                query.removeEventListener(this);
                 if (dataSnapshot.exists()) {
-                    Log.i(TAG, "Found Existing Queue Item");
-                    query.removeEventListener(this);
 
                     DataSnapshot firstChild = dataSnapshot.getChildren().iterator().next();
-                    final String itemUid = firstChild.child("uid").getValue().toString();
-                    firstChild.getRef().removeValue();
-                    pushPos.removeValue();
 
-                    HashMap<String, Object> people = new HashMap<>();
-                    people.put(auth.getUid(), false);
-                    people.put(itemUid, false);
+                    Object uid = firstChild.child("uid").getValue();
+                    if (uid != null) {
+                        String itemUid = uid.toString();
+                        firstChild.getRef().removeValue();
+                        pushPos.removeValue();
 
-                    final DatabaseReference chatRef = dbRef.push();
+                        Log.i(TAG, "Found Existing Queue Item: " + itemUid);
 
-                    chatRef.child("people").updateChildren(people).addOnCompleteListener(new OnCompleteListener<Void>() {
-                        @Override
-                        public void onComplete(@NonNull Task<Void> task) {
+                        HashMap<String, Object> people = new HashMap<>();
+                        people.put(auth.getUid(), false);
+                        people.put(itemUid, false);
+
+                        final DatabaseReference chatRef = dbRef.push();
+
+                        chatRef.child("people").updateChildren(people).addOnCompleteListener(task -> {
                             dialog.dismiss();
                             String chatKey = chatRef.getKey();
-                            db.getReference("/Users/" + itemUid).child(userChats).child(chatKey).setValue(auth.getUid());
-                            currUser.child(userChats).child(chatKey).setValue(true);
-                            otherUid = itemUid;
-                            callback.goToActivity(chatKey, ChatActivity.ANONYMOUS, true);
-                        }
-                    });
+                            if (chatKey != null) {
+                                db.getReference("/Users/" + itemUid).child(userChats).child(chatKey).setValue(auth.getUid());
+                                currUser.child(userChats).child(chatKey).setValue(true);
+                                otherUid = itemUid;
+                                callback.goToActivity(chatKey, ChatActivity.ANONYMOUS, true);
+                            }
+                        });
+                    }
                 } else {
-                    query.removeEventListener(this);
                     addToQueue(pushPos, queueMatchListener, userChats);
                 }
             }
 
             @Override
             public void onCancelled(@NonNull DatabaseError databaseError) {
-
+                Log.i(TAG, databaseError.getDetails());
             }
         });
     }
 
     private void addToQueue(DatabaseReference pushPos, final ValueEventListener queueMatchListener, String userChats) {
         Log.i(TAG, "Added to Queue");
-        pushPos.child("uid").setValue(auth.getUid()).addOnCompleteListener(new OnCompleteListener<Void>() {
-            @Override
-            public void onComplete(@NonNull Task<Void> task) {
-                if (!task.isSuccessful()) {
-                    Toast.makeText(getContext(), "Error adding to queue.", Toast.LENGTH_SHORT).show();
-                } else {
-                    currUser.child(userChats).addValueEventListener(queueMatchListener);
-                }
+        pushPos.child("uid").setValue(auth.getUid()).addOnCompleteListener(task -> {
+            if (!task.isSuccessful()) {
+                Toast.makeText(getContext(), "Error adding to queue.", Toast.LENGTH_SHORT).show();
+            } else {
+                currUser.child(userChats).addValueEventListener(queueMatchListener);
             }
         });
     }
