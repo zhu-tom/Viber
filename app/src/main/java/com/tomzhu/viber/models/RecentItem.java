@@ -11,12 +11,8 @@ public class RecentItem {
         TEXT
     }
 
-    public RecentItem(String type, String uid, String chatId, long datetime) {
-        if (type.equals("video")) {
-            this.type = ChatType.VIDEO;
-        } else if (type.equals("text")) {
-            this.type = ChatType.TEXT;
-        }
+    public RecentItem(ChatType type, String uid, String chatId, long datetime) {
+        this.type = type;
         this.uid = uid;
         this.chatId = chatId;
         this.datetime = datetime;
@@ -35,6 +31,10 @@ public class RecentItem {
     }
 
     public ChatType getName() {
+        return type;
+    }
+
+    public ChatType getType() {
         return type;
     }
 }

@@ -14,9 +14,11 @@
         app:layout_constraintTop_toTopOf="parent" />
 
     <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recent_items"
         android:layout_width="409dp"
-        android:layout_height="533dp"
+        android:layout_height="wrap_content"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/searchView2" />
+        app:layout_constraintTop_toBottomOf="@+id/searchView2"
+        app:reverseLayout="true"/>
 </androidx.constraintlayout.widget.ConstraintLayout>

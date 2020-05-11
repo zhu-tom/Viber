@@ -214,6 +214,7 @@ public class VideoActivity extends AppCompatActivity {
                     }
                     break;
                 case "leave":
+                    addToRecents();
                     db.getReference("/VideoChats/" + chatKey).removeValue();
                     onBackPressed();
                     break;
@@ -478,21 +479,25 @@ public class VideoActivity extends AppCompatActivity {
     }
 
     private void leave() {
+        localPeer.close();
+        addToRecents();
         HashMap<String, Object> data = new HashMap<>();
         data.put("type", "leave");
         data.put("uid", otherUid);
 //        webSocket.send(gson.toJson(data));
 //        webSocket.close();
         sendToRemote(data);
-        localPeer.close();
-        HashMap<String, Object> log = new HashMap<>();
+        onBackPressed();
+    }
+
+    private void addToRecents() {
+        HashMap<String, Object> data = new HashMap<>();
         data.put("type", "video");
         data.put("otherUid", otherUid);
         data.put("chatId", chatKey);
         data.put("datetime", new Date().getTime());
-        currUserRef.child("recent").push().setValue(log);
+        currUserRef.child("recent").push().setValue(data);
         currUserRef.child("anonVideos").removeValue();
-        onBackPressed();
     }
 
     private VideoCapturer getVideoCapturer(CameraVideoCapturer.CameraEventsHandler eventsHandler) {

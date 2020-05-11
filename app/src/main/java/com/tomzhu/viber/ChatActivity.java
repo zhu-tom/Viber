@@ -67,7 +67,6 @@ public class ChatActivity extends AppCompatActivity {
     private boolean canSendTyping;
     private String otherName;
 
-    private RecyclerView.LayoutManager layoutManager;
     private RecyclerView.Adapter adapter;
     private EditText toSend;
     private Button sendBtn;
@@ -102,8 +101,8 @@ public class ChatActivity extends AppCompatActivity {
 
         messages = new ArrayList<>();
 
-        layoutManager = new LinearLayoutManager(this);
-        adapter = new ChatViewAdapter(messages);
+        RecyclerView.LayoutManager layoutManager = new LinearLayoutManager(this);
+        adapter = new ChatViewAdapter(messages, isAnon);
         RecyclerView recyclerView = findViewById(R.id.messages);
         recyclerView.setHasFixedSize(false);
         recyclerView.setNestedScrollingEnabled(false);
@@ -142,7 +141,7 @@ public class ChatActivity extends AppCompatActivity {
             Log.i(TAG, "onKey " + keyCode + ": " + event.getAction());
             if (keyCode == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_UP) {
                 if (toSend.getText().toString().trim().length() != 0) {
-                    sendMessage(toSend.getText().toString(), currUid);
+                    sendMessage(toSend.getText().toString(), ChatMessage.Type.TEXT);
                     toSend.setText("");
                     peopleRef.child(currUid).setValue(false);
                 }
@@ -171,7 +170,7 @@ public class ChatActivity extends AppCompatActivity {
 
         sendBtn = findViewById(R.id.sendBtn);
         sendBtn.setOnClickListener(v -> {
-            sendMessage(toSend.getText().toString(), currUid);
+            sendMessage(toSend.getText().toString(), ChatMessage.Type.TEXT);
             toSend.setText("");
         });
 
@@ -206,11 +205,16 @@ public class ChatActivity extends AppCompatActivity {
                     Object messageText = dataSnapshot.child("message").getValue();
                     Object name = dataSnapshot.child("name").getValue();
                     Object username = dataSnapshot.child("username").getValue();
+                    Object type = dataSnapshot.child("type").getValue();
                     ChatMessage message;
-                    if (messageText != null && name != null && username != null && mUid != null) {
-                        message = new ChatMessage(messageText.toString(), username.toString(), mUid.toString(), name.toString());
-                        messages.add(message);
-                        adapter.notifyDataSetChanged();
+                    if (messageText != null && name != null && username != null && mUid != null && type != null) {
+                        ChatMessage.Type chatType = ChatMessage.Type.valueOf(type.toString().toUpperCase());
+                        if (chatType == ChatMessage.Type.TEXT || (chatType == ChatMessage.Type.LEAVE && isAnon)) {
+                            message = new ChatMessage(messageText.toString(), username.toString(), mUid.toString(), name.toString(), chatType);
+                            messages.add(message);
+                            adapter.notifyDataSetChanged();
+                            recyclerView.scrollToPosition(messages.size()-1);
+                        }
                     }
                 }
             }
@@ -244,7 +248,6 @@ public class ChatActivity extends AppCompatActivity {
         yesButton.setText(R.string.yes);
         yesButton.setOnClickListener(v -> peopleRef.child(currUid).removeValue().addOnCompleteListener(task -> {
             if (task.isSuccessful()) {
-                sendMessage(currUsername + " has left the chat", null);
                 HashMap<String, Object> map = new HashMap<>();
                 map.put("type", "text");
                 map.put("otherUid", otherUid);
@@ -253,6 +256,7 @@ public class ChatActivity extends AppCompatActivity {
                 DatabaseReference userRef = db.getReference("/Users/"+currUid);
                 userRef.child("recent").push().setValue(map);
                 userRef.child("anonChats").removeValue();
+                sendMessage(currUsername + " has left the chat", ChatMessage.Type.LEAVE);
                 onBackPressed();
             }
         }));
@@ -276,12 +280,13 @@ public class ChatActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    private void sendMessage(String message, String uid) {
+    private void sendMessage(String message, ChatMessage.Type type) {
         Map<String, Object> hashMap = new HashMap<>();
         hashMap.put("message", message);
         hashMap.put("username", currUsername);
-        hashMap.put("uid", uid);
+        hashMap.put("uid", currUid);
         hashMap.put("name", currName);
+        hashMap.put("type", type);
         chatRef.push().updateChildren(hashMap);
     }
 }

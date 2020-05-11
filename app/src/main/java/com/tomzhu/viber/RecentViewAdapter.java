@@ -1,8 +1,10 @@
 package com.tomzhu.viber;
 
+import android.graphics.drawable.Drawable;
 import android.media.Image;
 import android.net.Uri;
 import android.service.autofill.AutofillService;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -11,8 +13,10 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
@@ -32,12 +36,34 @@ import java.util.Iterator;
 import java.util.function.Consumer;
 
 public class RecentViewAdapter extends RecyclerView.Adapter<RecentViewAdapter.RecentViewHolder> {
+    private static final String TAG = "RecentViewAdapter";
     private ArrayList<RecentItem> list;
     private FirebaseDatabase db;
+    private String currUid;
+    private ArrayList<String> usersSent;
 
-    public RecentViewAdapter(ArrayList<RecentItem> items, FirebaseDatabase db) {
+    public RecentViewAdapter(ArrayList<RecentItem> items, FirebaseDatabase db, String currUid) {
         list = items;
         this.db = db;
+        this.currUid = currUid;
+
+        db.getReference("/Users/"+currUid+"/friendRequests").addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                usersSent = new ArrayList<>();
+                if (dataSnapshot.exists()) {
+                    for (DataSnapshot child : dataSnapshot.getChildren()) {
+                        Object senderUid = child.child("uid").getValue();
+                        if (senderUid != null) usersSent.add(senderUid.toString());
+                    }
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+
+            }
+        });
     }
 
     @NonNull
@@ -51,35 +77,56 @@ public class RecentViewAdapter extends RecyclerView.Adapter<RecentViewAdapter.Re
         RecentItem currItem = list.get(position);
 
         holder.setDatetime(currItem.getDatetime());
-        holder.setOnAddListener(v -> {
-            if (db != null && currItem.getUid() != null) {
-                HashMap<String, Object> map = new HashMap<>();
-                map.put("uid", currItem.getUid());
-                map.put("datetime", new Date().getTime());
-                db.getReference("/Users/" + currItem.getUid()).child("friendRequests").push().setValue(map);
+        holder.setType(currItem.getType());
+
+        DatabaseReference friendReqRef = db.getReference("/Users/" + currItem.getUid() + "/friendRequests");
+        friendReqRef.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                if (dataSnapshot.exists()) {
+                    for (DataSnapshot snapshot : dataSnapshot.getChildren()) {
+                        Object requestUid = snapshot.child("uid").getValue();
+                        if (requestUid != null && requestUid.toString().equals(currUid)) {
+                            setRemoveListener(holder, snapshot.getRef(), currItem);
+                            return;
+                        }
+                    }
+                }
+                setAddListener(holder, currItem);
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+
             }
         });
+
 
         db.getReference("/Users/" + currItem.getUid()).addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                 if (dataSnapshot.exists()) {
-                    for (DataSnapshot currItem : dataSnapshot.getChildren()) {
-                        if (currItem != null && currItem.getValue() != null) {
-                            switch (currItem.getKey()) {
+                    boolean hasAvatar = false;
+                    for (DataSnapshot item : dataSnapshot.getChildren()) {
+                        if (item != null && item.getValue() != null) {
+                            switch (item.getKey()) {
                                 case "name":
-                                    holder.setName(currItem.getValue().toString());
+                                    holder.setName(item.getValue().toString());
                                     break;
                                 case "username":
-                                    holder.setUsername(currItem.getValue().toString());
+                                    holder.setUsername(item.getValue().toString());
                                     break;
                                 case "photoUrl":
-                                    holder.setAvatar(currItem.getValue().toString());
+                                    hasAvatar = true;
+                                    holder.setAvatar(item.getValue().toString());
                                     break;
                                 default:
                                     break;
                             }
                         }
+                    }
+                    if (!hasAvatar) {
+                        holder.setAvatar(R.drawable.avatar_placeholder);
                     }
                 }
             }
@@ -88,6 +135,26 @@ public class RecentViewAdapter extends RecyclerView.Adapter<RecentViewAdapter.Re
             public void onCancelled(@NonNull DatabaseError databaseError) {
 
             }
+        });
+    }
+
+    private void setRemoveListener(RecentViewHolder holder, DatabaseReference toRemove, RecentItem currItem) {
+        holder.setButtonText("Request Sent");
+        holder.setOnAddListener(v -> {
+            toRemove.removeValue();
+            //setAddListener(holder, currItem);
+        });
+    }
+
+    private void setAddListener(RecentViewHolder holder, RecentItem currItem) {
+        holder.setButtonText("Add Friend");
+        holder.setOnAddListener(v -> {
+            HashMap<String, Object> map = new HashMap<>();
+            map.put("uid", currUid);
+            map.put("datetime", new Date().getTime());
+            DatabaseReference pushPos = db.getReference("/Users/" + currItem.getUid() + "/friendRequests").push();
+            pushPos.setValue(map);
+            //setRemoveListener(holder, pushPos, currItem);
         });
     }
 
@@ -103,9 +170,7 @@ public class RecentViewAdapter extends RecyclerView.Adapter<RecentViewAdapter.Re
         private TextView datetime;
         private ImageView avatar;
         private Button addFriend;
-
-        private String uid;
-        private FirebaseDatabase db;
+        private TextView type;
 
         public RecentViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -114,15 +179,16 @@ public class RecentViewAdapter extends RecyclerView.Adapter<RecentViewAdapter.Re
             username = itemView.findViewById(R.id.username);
             datetime = itemView.findViewById(R.id.datetime);
             avatar = itemView.findViewById(R.id.avatar);
+            type = itemView.findViewById(R.id.chatType);
             addFriend = itemView.findViewById(R.id.add_friend);
-            addFriend.setOnClickListener(v -> {
-                if (db != null && uid != null) {
-                    HashMap<String, Object> map = new HashMap<>();
-                    map.put("uid", uid);
-                    map.put("datetime", new Date().getTime());
-                    db.getReference("/Users/" + uid).child("friendRequests").push().setValue(map);
-                }
-            });
+        }
+
+        public void setType(RecentItem.ChatType type) {
+            this.type.setText(type == RecentItem.ChatType.TEXT ? "Text":"Video");
+        }
+
+        public void setButtonText(String text) {
+            addFriend.setText(text);
         }
 
         public void setOnAddListener(View.OnClickListener listener) {
@@ -131,6 +197,10 @@ public class RecentViewAdapter extends RecyclerView.Adapter<RecentViewAdapter.Re
 
         public void setAvatar(String url) {
             Picasso.get().load(Uri.parse(url)).placeholder(R.drawable.avatar_placeholder).into(this.avatar);
+        }
+
+        public void setAvatar(int avatar) {
+            Picasso.get().load(avatar).placeholder(R.drawable.avatar_placeholder).into(this.avatar);
         }
 
         public void setDatetime(long datetime) {

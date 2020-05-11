@@ -11,6 +11,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.gms.measurement.module.Analytics;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
@@ -25,14 +26,16 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
     private ArrayList<ChatMessage> messages;
     private String currUid;
     private HashMap<String, String> avatars = new HashMap<>();
+    private boolean isAnon;
 
     private static final int SENDER = 0;
     private static final int RECEIVER = 1;
     private static final int ANNOUNCEMENT = 2;
 
-    public ChatViewAdapter(ArrayList<ChatMessage> m) {
-        currUid = FirebaseAuth.getInstance().getCurrentUser().getUid();
+    public ChatViewAdapter(ArrayList<ChatMessage> m, boolean a) {
+        currUid = FirebaseAuth.getInstance().getUid();
         messages = m;
+        isAnon = a;
     }
 
     @NonNull
@@ -50,6 +53,8 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
             case ANNOUNCEMENT:
                 layout = LayoutInflater.from(parent.getContext()).inflate(R.layout.chat_announcement, parent, false);
                 break;
+            default:
+                break;
         }
         return new ChatViewHolder(layout);
     }
@@ -58,54 +63,58 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
     public void onBindViewHolder(@NonNull final ChatViewHolder holder, int position) {
         ChatMessage currMessage = messages.get(position);
 
-        if (currMessage.getSenderUid() == null) {
+        if (getItemViewType(position) == ANNOUNCEMENT) {
             holder.setAnnouncement(currMessage.getMessage());
         } else {
             holder.setMessage(currMessage.getMessage());
-
-            final String sender = currMessage.getSenderUid();
-
-            if (avatars.containsKey(sender)) {
-                String url = avatars.get(sender);
-                if (url != null) {
-                    holder.setUserAv(Uri.parse(url));
-                }
-            } else {
-                FirebaseDatabase.getInstance().getReference("Users").child(sender).child("photoUrl").addValueEventListener(new ValueEventListener() {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                        if (dataSnapshot.exists() && dataSnapshot.getValue() != null) {
-                            avatars.put(sender, dataSnapshot.getValue().toString());
-                            holder.setUserAv(Uri.parse(avatars.get(sender)));
-                        }
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                });
-            }
-
             if (holder.getItemViewType() == SENDER) {
                 holder.setUsername("Me");
             } else {
                 holder.setUsername(currMessage.getSenderName());
             }
+
+            // Check saved avatars
+            if (!isAnon) {
+                final String sender = currMessage.getSenderUid();
+                if (avatars.containsKey(sender)) {
+                    String url = avatars.get(sender);
+                    if (url != null) {
+                        holder.setUserAv(Uri.parse(url));
+                    }
+                } else {
+                    FirebaseDatabase.getInstance().getReference("Users").child(sender).child("photoUrl").addValueEventListener(new ValueEventListener() {
+                        @Override
+                        public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                            if (dataSnapshot.exists() && dataSnapshot.getValue() != null) {
+                                avatars.put(sender, dataSnapshot.getValue().toString());
+                                holder.setUserAv(Uri.parse(avatars.get(sender)));
+                            }
+                        }
+
+                        @Override
+                        public void onCancelled(@NonNull DatabaseError databaseError) {
+
+                        }
+                    });
+                }
+            }
         }
-
-
     }
 
     @Override
     public int getItemViewType(int position) {
-        if (messages.get(position).getSenderUid() == currUid) {
-            return SENDER;
-        } else if (messages.get(position).getSenderUid() == null){
-            return ANNOUNCEMENT;
-        } else {
-            return RECEIVER;
+        ChatMessage currMess = messages.get(position);
+        if (currMess.getType() == ChatMessage.Type.TEXT) {
+            if (currMess.getSenderUid().equals(currUid)) {
+                return SENDER;
+            } else {
+                return RECEIVER;
+            }
         }
+        else if (currMess.getType() == ChatMessage.Type.LEAVE) {
+            return ANNOUNCEMENT;
+        }
+        return -1;
     }
 
     @Override

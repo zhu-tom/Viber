@@ -52,6 +52,7 @@ public class MatchFragment extends Fragment {
     private DatabaseReference currUser;
     private String otherUid;
     private boolean firstTime = true;
+    private boolean pushed;
 
     private interface Callback {
         void goToActivity(String key, int type, boolean isCaller);
@@ -70,6 +71,7 @@ public class MatchFragment extends Fragment {
         db = FirebaseDatabase.getInstance();
         auth = FirebaseAuth.getInstance();
         currUser = db.getReference("/Users/" + auth.getUid());
+        pushed = false;
     }
 
     @Override
@@ -131,7 +133,7 @@ public class MatchFragment extends Fragment {
             @Override
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                 query.removeEventListener(this);
-                if (dataSnapshot.exists()) {
+                if (dataSnapshot.exists() && !pushed) {
 
                     DataSnapshot firstChild = dataSnapshot.getChildren().iterator().next();
 
@@ -148,6 +150,7 @@ public class MatchFragment extends Fragment {
                         people.put(itemUid, false);
 
                         final DatabaseReference chatRef = dbRef.push();
+                        pushed = true;
 
                         chatRef.child("people").updateChildren(people).addOnCompleteListener(task -> {
                             dialog.dismiss();
@@ -170,6 +173,12 @@ public class MatchFragment extends Fragment {
                 Log.i(TAG, databaseError.getDetails());
             }
         });
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        pushed = false;
     }
 
     private void addToQueue(DatabaseReference pushPos, final ValueEventListener queueMatchListener, String userChats) {
@@ -209,6 +218,7 @@ public class MatchFragment extends Fragment {
 
     private void goToActivity(Class<?> activity, String chatKey, int anonymous, boolean isCaller) {
         showDialog("Connecting...");
+        Log.i(TAG, "going to activity");
         Bundle bundle = new Bundle();
         bundle.putString("chatId", chatKey);
         bundle.putString("otherUid", otherUid);

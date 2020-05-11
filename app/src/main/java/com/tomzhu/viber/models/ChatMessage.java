@@ -5,12 +5,19 @@ public class ChatMessage {
     private String senderUser;
     private String senderUid;
     private String senderName;
+    private Type type;
 
-    public ChatMessage(String m, String s, String u, String n) {
+    public enum Type {
+        TEXT,
+        LEAVE,
+    }
+
+    public ChatMessage(String m, String s, String u, String n, Type t) {
         message = m;
         senderUser = s;
         senderUid = u;
         senderName = n;
+        type = t;
     }
 
     public String getMessage() {
@@ -27,5 +34,9 @@ public class ChatMessage {
 
     public String getSenderName() {
         return senderName;
+    }
+
+    public Type getType() {
+        return type;
     }
 }
