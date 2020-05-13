@@ -45,7 +45,10 @@ public class RecentFragment extends Fragment {
         recyclerView.setAdapter(recentViewAdapter);
         recyclerView.setHasFixedSize(false);
         recyclerView.setNestedScrollingEnabled(false);
-        recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
+        LinearLayoutManager layoutManager = new LinearLayoutManager(getContext());
+        layoutManager.setStackFromEnd(true);
+        layoutManager.setReverseLayout(true);
+        recyclerView.setLayoutManager(layoutManager);
 
         db.getReference("/Users/" + auth.getUid() + "/recent").orderByKey().addChildEventListener(new ChildEventListener() {
             @Override

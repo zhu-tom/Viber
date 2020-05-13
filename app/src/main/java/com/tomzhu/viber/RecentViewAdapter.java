@@ -149,6 +149,7 @@ public class RecentViewAdapter extends RecyclerView.Adapter<RecentViewAdapter.Re
             HashMap<String, Object> map = new HashMap<>();
             map.put("uid", currUid);
             map.put("datetime", new Date().getTime());
+            map.put("chatId", currItem.getChatId());
             DatabaseReference pushPos = db.getReference("/Users/" + currItem.getUid() + "/friendRequests").push();
             pushPos.setValue(map);
         });

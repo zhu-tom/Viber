@@ -1,13 +1,9 @@
-package com.tomzhu.viber;
+package com.tomzhu.viber.ui.notifications;
 
-import android.media.Image;
 import android.net.Uri;
-import android.text.Layout;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -22,12 +18,14 @@ import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 import com.squareup.picasso.Picasso;
+import com.tomzhu.viber.ChildEventListener;
+import com.tomzhu.viber.R;
 import com.tomzhu.viber.models.FriendRequest;
 import com.tomzhu.viber.models.NotificationItem;
 
-import java.sql.ClientInfoStatus;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 
 public class NotificationsViewAdapter extends RecyclerView.Adapter<NotificationsViewAdapter.NotificationsViewHolder> {
     private static final String TAG = "NotificationsViewAdapter";
@@ -79,27 +77,34 @@ public class NotificationsViewAdapter extends RecyclerView.Adapter<Notifications
                 holder.setTime(friendRequest.getTime());
                 holder.setAvatar(friendRequest.getPhotoUrl());
                 holder.setAcceptListener(v -> addFriend(friendRequest));
-                holder.setDeclineListener(v -> removeRequest(friendRequest, () -> {}));
+                holder.setDeclineListener(v -> removeRequest(friendRequest, (s) -> {}));
                 break;
             default:
                 break;
         }
     }
 
-    private void removeRequest(FriendRequest item, Runnable callback) {
+    private interface Callback {
+        void run(String chatId);
+    }
+
+    private void removeRequest(FriendRequest item, Callback callback) {
         db.getReference("/Users/" + currUid + "/friendRequests/" + item.getKey()).addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                 if (dataSnapshot.exists()) {
-                    dataSnapshot.getRef().removeValue();
-                    for (int i = 0; i < items.size(); i++) {
-                        if (items.get(i).getKey().equals(item.getKey())) {
-                            items.remove(i);
-                            notifyDataSetChanged();
-                            break;
+                    Object chatId = dataSnapshot.child("chatId").getValue();
+                    if (chatId != null) {
+                        dataSnapshot.getRef().removeValue();
+                        for (int i = 0; i < items.size(); i++) {
+                            if (items.get(i).getKey().equals(item.getKey())) {
+                                items.remove(i);
+                                notifyDataSetChanged();
+                                break;
+                            }
                         }
+                        callback.run(chatId.toString());
                     }
-                    callback.run();
                 }
             }
 
@@ -111,10 +116,12 @@ public class NotificationsViewAdapter extends RecyclerView.Adapter<Notifications
     }
 
     private void addFriend(FriendRequest item) {
-        removeRequest(item, () -> {
-            db.getReference("/Users/"+currUid+"/friends/"+item.getUid()).setValue(true);
+        removeRequest(item, (s) -> {
+            HashMap<String, Object> map = new HashMap<>();
+            map.put("chatId", s);
+            db.getReference("/Users/"+currUid+"/friends/"+item.getUid()).setValue(map);
             db.getReference("/Users/"+currUid+"/recent").orderByChild("otherUid").equalTo(item.getUid()).addChildEventListener(childRemover);
-            db.getReference("/Users/"+item.getUid()+"/friends/"+currUid).setValue(true);
+            db.getReference("/Users/"+item.getUid()+"/friends/"+currUid).setValue(map);
             db.getReference("/Users/"+item.getUid()+"/recent").orderByChild("otherUid").equalTo(currUid).addChildEventListener(childRemover);
         });
     }

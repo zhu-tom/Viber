@@ -28,9 +28,13 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
     private HashMap<String, String> avatars = new HashMap<>();
     private boolean isAnon;
 
-    private static final int SENDER = 0;
-    private static final int RECEIVER = 1;
+    private static final int SENDER_TOP = 0;
+    private static final int RECEIVER_TOP = 1;
     private static final int ANNOUNCEMENT = 2;
+    private static final int SENDER_CONT = 3;
+    private static final int SENDER_END = 4;
+    private static final int RECEIVER_CONT = 5;
+    private static final int RECEIVER_END = 6;
 
     public ChatViewAdapter(ArrayList<ChatMessage> m, boolean a) {
         currUid = FirebaseAuth.getInstance().getUid();
@@ -44,10 +48,22 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
         View layout = new LinearLayout(parent.getContext());
 
         switch (viewType) {
-            case SENDER:
+            case SENDER_CONT:
+                layout = LayoutInflater.from(parent.getContext()).inflate(R.layout.chat_message_sender_cont, parent, false);
+                break;
+            case RECEIVER_CONT:
+                layout = LayoutInflater.from(parent.getContext()).inflate(R.layout.chat_message_receiver_cont, parent, false);
+                break;
+            case SENDER_TOP:
                 layout = LayoutInflater.from(parent.getContext()).inflate(R.layout.chat_message_sender, parent, false);
                 break;
-            case RECEIVER:
+            case SENDER_END:
+                layout = LayoutInflater.from(parent.getContext()).inflate(R.layout.chat_message_sender_end, parent, false);
+                break;
+            case RECEIVER_END:
+                layout = LayoutInflater.from(parent.getContext()).inflate(R.layout.chat_message_receiver_end, parent, false);
+                break;
+            case RECEIVER_TOP:
                 layout = LayoutInflater.from(parent.getContext()).inflate(R.layout.chat_message_receiver, parent, false);
                 break;
             case ANNOUNCEMENT:
@@ -62,19 +78,27 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
     @Override
     public void onBindViewHolder(@NonNull final ChatViewHolder holder, int position) {
         ChatMessage currMessage = messages.get(position);
+        int type = getItemViewType(position);
 
         if (getItemViewType(position) == ANNOUNCEMENT) {
             holder.setAnnouncement(currMessage.getMessage());
         } else {
             holder.setMessage(currMessage.getMessage());
-            if (holder.getItemViewType() == SENDER) {
-                holder.setUsername("Me");
-            } else {
-                holder.setUsername(currMessage.getSenderName());
+            switch (type) {
+                case SENDER_TOP:
+                    holder.setUsername("Me");
+                    break;
+                case RECEIVER_TOP:
+                    holder.setUsername(currMessage.getSenderName());
+                    break;
+                case RECEIVER_END:
+                case SENDER_END:
+                    holder.setStatus(currMessage.getStatus() == ChatMessage.Status.READ ? "Read":"Sent");
+                    break;
             }
 
             // Check saved avatars
-            if (!isAnon) {
+            if (!isAnon && (type == RECEIVER_TOP || type == SENDER_TOP)) {
                 final String sender = currMessage.getSenderUid();
                 if (avatars.containsKey(sender)) {
                     String url = avatars.get(sender);
@@ -106,9 +130,21 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
         ChatMessage currMess = messages.get(position);
         if (currMess.getType() == ChatMessage.Type.TEXT) {
             if (currMess.getSenderUid().equals(currUid)) {
-                return SENDER;
+                if (position == getItemCount()) {
+                    return SENDER_END;
+                } else if (messages.size() > 0 && messages.get(position-1).getSenderUid().equals(currMess.getSenderUid())) {
+                    return SENDER_CONT;
+                } else {
+                    return SENDER_TOP;
+                }
             } else {
-                return RECEIVER;
+                if (position == getItemCount()) {
+                    return RECEIVER_END;
+                } else if (messages.get(position-1).getSenderUid().equals(currMess.getSenderUid())) {
+                    return RECEIVER_CONT;
+                } else {
+                    return RECEIVER_TOP;
+                }
             }
         }
         else if (currMess.getType() == ChatMessage.Type.LEAVE) {
@@ -125,6 +161,7 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
     static public class ChatViewHolder extends RecyclerView.ViewHolder {
         private TextView username;
         private TextView message;
+        private TextView status;
         private ImageView userAv;
         private TextView announcement;
 
@@ -135,6 +172,7 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
             message = itemView.findViewById(R.id.message_text);
             username = itemView.findViewById(R.id.sender_username);
             announcement = itemView.findViewById(R.id.announcement_text);
+            status = itemView.findViewById(R.id.status);
         }
 
         public void setMessage(String message) {
@@ -142,15 +180,19 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
         }
 
         public void setUserAv(Uri userAv) {
-            this.userAv.setImageURI(userAv);
+            if (this.userAv != null) this.userAv.setImageURI(userAv);
         }
 
         public void setUsername(String username) {
-            this.username.setText(username);
+            if (this.username != null) this.username.setText(username);
         }
 
         public void setAnnouncement(String announcement) {
-            this.announcement.setText(announcement);
+            if (this.announcement != null) this.announcement.setText(announcement);
+        }
+
+        public void setStatus(String status) {
+            if (this.status != null) this.status.setText(status);
         }
     }
 }

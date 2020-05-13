@@ -206,11 +206,15 @@ public class ChatActivity extends AppCompatActivity {
                     Object name = dataSnapshot.child("name").getValue();
                     Object username = dataSnapshot.child("username").getValue();
                     Object type = dataSnapshot.child("type").getValue();
+                    Object status = dataSnapshot.child("status").getValue();
+                    HashMap<String, Object> map = new HashMap<>();
+                    map.put("status", ChatMessage.Status.READ);
+                    dataSnapshot.getRef().updateChildren(map);
                     ChatMessage message;
-                    if (messageText != null && name != null && username != null && mUid != null && type != null) {
+                    if (messageText != null && name != null && username != null && mUid != null && type != null && status != null) {
                         ChatMessage.Type chatType = ChatMessage.Type.valueOf(type.toString().toUpperCase());
                         if (chatType == ChatMessage.Type.TEXT || (chatType == ChatMessage.Type.LEAVE && isAnon)) {
-                            message = new ChatMessage(messageText.toString(), username.toString(), mUid.toString(), name.toString(), chatType);
+                            message = new ChatMessage(messageText.toString(), username.toString(), mUid.toString(), name.toString(), chatType, ChatMessage.Status.valueOf(status.toString().toUpperCase()));
                             messages.add(message);
                             adapter.notifyDataSetChanged();
                             recyclerView.scrollToPosition(messages.size()-1);
@@ -227,55 +231,59 @@ public class ChatActivity extends AppCompatActivity {
 
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        LinearLayout layout = new LinearLayout(this);
-        layout.setGravity(Gravity.CENTER);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        layout.setLayoutParams(params);
-        TextView label = new TextView(this);
-        label.setText(R.string.leave_conf);
-        label.setLayoutParams(params);
-        layout.addView(label);
+        if (isAnon) {
+            LinearLayout layout = new LinearLayout(this);
+            layout.setGravity(Gravity.CENTER);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            layout.setLayoutParams(params);
+            TextView label = new TextView(this);
+            label.setText(R.string.leave_conf);
+            label.setLayoutParams(params);
+            layout.addView(label);
 
-        LinearLayout btnLayout = new LinearLayout(this);
-        btnLayout.setOrientation(LinearLayout.HORIZONTAL);
-        btnLayout.setGravity(Gravity.CENTER);
-        btnLayout.setLayoutParams(params);
-        btnLayout.setDividerPadding(12);
+            LinearLayout btnLayout = new LinearLayout(this);
+            btnLayout.setOrientation(LinearLayout.HORIZONTAL);
+            btnLayout.setGravity(Gravity.CENTER);
+            btnLayout.setLayoutParams(params);
+            btnLayout.setDividerPadding(12);
 
-        Button yesButton = new Button(this);
-        yesButton.setLayoutParams(params);
-        yesButton.setText(R.string.yes);
-        yesButton.setOnClickListener(v -> peopleRef.child(currUid).removeValue().addOnCompleteListener(task -> {
-            if (task.isSuccessful()) {
-                HashMap<String, Object> map = new HashMap<>();
-                map.put("type", "text");
-                map.put("otherUid", otherUid);
-                map.put("chatId", chatId);
-                map.put("datetime", new Date().getTime());
-                DatabaseReference userRef = db.getReference("/Users/"+currUid);
-                userRef.child("recent").push().setValue(map);
-                userRef.child("anonChats").removeValue();
-                sendMessage(currUsername + " has left the chat", ChatMessage.Type.LEAVE);
-                onBackPressed();
-            }
-        }));
+            Button yesButton = new Button(this);
+            yesButton.setLayoutParams(params);
+            yesButton.setText(R.string.yes);
+            yesButton.setOnClickListener(v -> peopleRef.child(currUid).removeValue().addOnCompleteListener(task -> {
+                if (task.isSuccessful()) {
+                    HashMap<String, Object> map = new HashMap<>();
+                    map.put("type", "text");
+                    map.put("otherUid", otherUid);
+                    map.put("chatId", chatId);
+                    map.put("datetime", new Date().getTime());
+                    DatabaseReference userRef = db.getReference("/Users/"+currUid);
+                    userRef.child("recent").push().setValue(map);
+                    userRef.child("anonChats").removeValue();
+                    sendMessage(currUsername + " has left the chat", ChatMessage.Type.LEAVE);
+                    onBackPressed();
+                }
+            }));
 
-        Button noButton = new Button(this);
-        noButton.setLayoutParams(params);
-        noButton.setText(R.string.no);
+            Button noButton = new Button(this);
+            noButton.setLayoutParams(params);
+            noButton.setText(R.string.no);
 
-        btnLayout.addView(yesButton);
-        btnLayout.addView(noButton);
+            btnLayout.addView(yesButton);
+            btnLayout.addView(noButton);
 
-        layout.addView(btnLayout);
+            layout.addView(btnLayout);
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setView(layout);
-        AlertDialog dialog = builder.create();
-        dialog.show();
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setView(layout);
+            AlertDialog dialog = builder.create();
+            dialog.show();
 
-        noButton.setOnClickListener(v -> dialog.dismiss());
+            noButton.setOnClickListener(v -> dialog.dismiss());
+        } else {
+            onBackPressed();
+        }
 
         return super.onOptionsItemSelected(item);
     }
@@ -287,6 +295,7 @@ public class ChatActivity extends AppCompatActivity {
         hashMap.put("uid", currUid);
         hashMap.put("name", currName);
         hashMap.put("type", type);
+        hashMap.put("status", ChatMessage.Status.SENT);
         chatRef.push().updateChildren(hashMap);
     }
 }
