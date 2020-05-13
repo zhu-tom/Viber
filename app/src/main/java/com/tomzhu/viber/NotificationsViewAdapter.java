@@ -79,23 +79,44 @@ public class NotificationsViewAdapter extends RecyclerView.Adapter<Notifications
                 holder.setTime(friendRequest.getTime());
                 holder.setAvatar(friendRequest.getPhotoUrl());
                 holder.setAcceptListener(v -> addFriend(friendRequest));
-                holder.setDeclineListener(v -> removeRequest(friendRequest));
+                holder.setDeclineListener(v -> removeRequest(friendRequest, () -> {}));
                 break;
             default:
                 break;
         }
     }
 
-    private void removeRequest(FriendRequest item) {
-        db.getReference("/Users/"+currUid+"/friendRequests").orderByChild("uid").equalTo(item.getUid()).addChildEventListener(childRemover);
+    private void removeRequest(FriendRequest item, Runnable callback) {
+        db.getReference("/Users/" + currUid + "/friendRequests/" + item.getKey()).addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                if (dataSnapshot.exists()) {
+                    dataSnapshot.getRef().removeValue();
+                    for (int i = 0; i < items.size(); i++) {
+                        if (items.get(i).getKey().equals(item.getKey())) {
+                            items.remove(i);
+                            notifyDataSetChanged();
+                            break;
+                        }
+                    }
+                    callback.run();
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+
+            }
+        });
     }
 
     private void addFriend(FriendRequest item) {
-        removeRequest(item);
-        db.getReference("/Users/"+currUid+"/friends/"+item.getUid()).setValue(true);
-        db.getReference("/Users/"+currUid+"/recent").orderByChild("uid").equalTo(item.getUid()).addChildEventListener(childRemover);
-        db.getReference("/Users/"+item.getUid()+"/friends/"+currUid).setValue(true);
-        db.getReference("/Users/"+item.getUid()+"/recent").orderByChild("uid").equalTo(currUid).addChildEventListener(childRemover);
+        removeRequest(item, () -> {
+            db.getReference("/Users/"+currUid+"/friends/"+item.getUid()).setValue(true);
+            db.getReference("/Users/"+currUid+"/recent").orderByChild("otherUid").equalTo(item.getUid()).addChildEventListener(childRemover);
+            db.getReference("/Users/"+item.getUid()+"/friends/"+currUid).setValue(true);
+            db.getReference("/Users/"+item.getUid()+"/recent").orderByChild("otherUid").equalTo(currUid).addChildEventListener(childRemover);
+        });
     }
 
     @Override

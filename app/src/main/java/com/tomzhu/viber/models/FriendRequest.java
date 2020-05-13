@@ -4,8 +4,8 @@ public class FriendRequest extends NotificationItem {
     private String uid;
     private String photoUrl;
 
-    public FriendRequest(String u, String url, String message, long time) {
-        super(message, time);
+    public FriendRequest(String k, String u, String url, String message, long time) {
+        super(k, message, time);
         uid = u;
         photoUrl = url;
     }

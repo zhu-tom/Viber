@@ -5,4 +5,5 @@
     <color name="colorAccent">#D81B60</color>
     <color name="sender">@android:color/holo_green_light</color>
     <color name="receiver">@android:color/holo_blue_light</color>
+    <color name="holoGreen">@android:color/tab_indicator_text</color>
 </resources>

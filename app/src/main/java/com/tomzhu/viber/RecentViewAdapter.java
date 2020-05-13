@@ -1,5 +1,7 @@
 package com.tomzhu.viber;
 
+import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.media.Image;
 import android.net.Uri;
@@ -9,6 +11,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -60,6 +63,20 @@ public class RecentViewAdapter extends RecyclerView.Adapter<RecentViewAdapter.Re
 
         holder.setDatetime(currItem.getDatetime());
         holder.setType(currItem.getType());
+        holder.setRemoveRecent(v -> {
+            db.getReference("/Users/" + currUid + "/recent").orderByChild("chatId").equalTo(currItem.getChatId()).addChildEventListener(new ChildEventListener() {
+                @Override
+                public void onChildAdded(@NonNull DataSnapshot dataSnapshot, @Nullable String s) {
+                    super.onChildAdded(dataSnapshot, s);
+                    if (dataSnapshot.exists()) {
+                        dataSnapshot.getRef().removeValue();
+                    }
+                }
+            });
+            if (currItem.getType() == RecentItem.ChatType.TEXT) {
+                db.getReference("/Chats/" + currItem.getChatId()).removeValue();
+            }
+        });
 
         DatabaseReference friendReqRef = db.getReference("/Users/" + currItem.getUid() + "/friendRequests");
         friendReqRef.addValueEventListener(new ValueEventListener() {
@@ -120,14 +137,14 @@ public class RecentViewAdapter extends RecyclerView.Adapter<RecentViewAdapter.Re
     }
 
     private void setRemoveListener(RecentViewHolder holder, DatabaseReference toRemove) {
-        holder.setButtonText("Request Sent");
+        holder.setButtonImg(R.drawable.baseline_hourglass_empty_white_18dp);
         holder.setOnAddListener(v -> {
             toRemove.removeValue();
         });
     }
 
     private void setAddListener(RecentViewHolder holder, RecentItem currItem) {
-        holder.setButtonText("Add Friend");
+        holder.setButtonImg(R.drawable.baseline_person_add_white_18dp);
         holder.setOnAddListener(v -> {
             HashMap<String, Object> map = new HashMap<>();
             map.put("uid", currUid);
@@ -148,8 +165,9 @@ public class RecentViewAdapter extends RecyclerView.Adapter<RecentViewAdapter.Re
         private TextView username;
         private TextView datetime;
         private ImageView avatar;
-        private Button addFriend;
+        private ImageButton addFriend;
         private TextView type;
+        private ImageButton removeRecent;
 
         public RecentViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -160,14 +178,30 @@ public class RecentViewAdapter extends RecyclerView.Adapter<RecentViewAdapter.Re
             avatar = itemView.findViewById(R.id.avatar);
             type = itemView.findViewById(R.id.chatType);
             addFriend = itemView.findViewById(R.id.add_friend);
+
+            removeRecent = itemView.findViewById(R.id.removeRecent);
         }
 
         public void setType(RecentItem.ChatType type) {
             this.type.setText(type == RecentItem.ChatType.TEXT ? "Text":"Video");
         }
 
-        public void setButtonText(String text) {
-            addFriend.setText(text);
+        public void setRemoveRecent(View.OnClickListener listener) {
+            removeRecent.setOnClickListener(listener);
+        }
+
+        public void setButtonImg(int drawable) {
+            switch (drawable) {
+                case R.drawable.baseline_person_add_white_18dp:
+                    addFriend.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#ff669900")));
+                    break;
+                case R.drawable.baseline_hourglass_empty_white_18dp:
+                    addFriend.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#aaaaaa")));
+                    break;
+                default:
+                    break;
+            }
+            addFriend.setImageResource(drawable);
         }
 
         public void setOnAddListener(View.OnClickListener listener) {

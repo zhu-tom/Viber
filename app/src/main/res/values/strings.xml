@@ -32,6 +32,8 @@
     <string name="leave_call_btn">Leave Call</string>
     <string name="accept_btn">Accept</string>
     <string name="decline_btn">Decline</string>
+    <string name="recents_label">Recents</string>
+    <string name="contacts_label">Contacts</string>
     <string name="large_text">
         "Material is the metaphor.\n\n"
 
