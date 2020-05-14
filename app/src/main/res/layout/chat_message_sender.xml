@@ -3,20 +3,20 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:gravity="bottom|end"
+    android:gravity="top|end"
     android:orientation="horizontal">
 
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginEnd="12dp"
-        android:gravity="end"
+        android:gravity="right|end"
         android:orientation="vertical">
 
         <TextView
             android:id="@+id/sender_username"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginEnd="12dp"
             android:fontFamily="sans-serif"
             android:text="@string/loading_label"
             android:textStyle="bold" />
@@ -25,10 +25,18 @@
             android:id="@+id/message_text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginEnd="12dp"
             android:background="@drawable/chat_textbox"
             android:backgroundTint="@color/sender"
             android:padding="12dp"
             android:text="@string/loading_label" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/loading_label"
+            android:visibility="gone" />
 
     </LinearLayout>
 
@@ -39,4 +47,5 @@
         android:adjustViewBounds="true"
         android:scaleType="centerCrop"
         app:srcCompat="@drawable/avatar_placeholder" />
+
 </LinearLayout>

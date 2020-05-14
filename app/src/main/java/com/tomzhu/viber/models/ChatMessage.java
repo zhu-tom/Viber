@@ -7,6 +7,7 @@ public class ChatMessage {
     private String senderUser;
     private String senderUid;
     private String senderName;
+    private String id;
     private Status status;
     private Type type;
 
@@ -24,13 +25,22 @@ public class ChatMessage {
         LEAVE,
     }
 
-    public ChatMessage(String m, String s, String u, String n, Type t, Status status1) {
+    public ChatMessage(String i, String m, String s, String u, String n, Type t, Status status1) {
         message = m;
         senderUser = s;
         senderUid = u;
         senderName = n;
         type = t;
         status = status1;
+        id = i;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setStatus(Status status) {
+        this.status = status;
     }
 
     public String getMessage() {

@@ -73,6 +73,7 @@ public class ChatActivity extends AppCompatActivity {
     private TextView isUserTyping;
 
     private ArrayList<ChatMessage> messages;
+    private ChildEventListener messageListener;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -127,6 +128,7 @@ public class ChatActivity extends AppCompatActivity {
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                 if (dataSnapshot.exists()) {
                     otherName = dataSnapshot.getValue(String.class);
+                    getSupportActionBar().setTitle(otherName);
                 }
             }
 
@@ -138,7 +140,6 @@ public class ChatActivity extends AppCompatActivity {
 
         toSend = findViewById(R.id.toSend);
         toSend.setOnKeyListener((v, keyCode, event) -> {
-            Log.i(TAG, "onKey " + keyCode + ": " + event.getAction());
             if (keyCode == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_UP) {
                 if (toSend.getText().toString().trim().length() != 0) {
                     sendMessage(toSend.getText().toString(), ChatMessage.Type.TEXT);
@@ -197,24 +198,28 @@ public class ChatActivity extends AppCompatActivity {
             }
         });
 
-        chatRef.orderByKey().addChildEventListener(new ChildEventListener() {
+        messageListener = new ChildEventListener() {
             @Override
             public void onChildAdded(@NonNull DataSnapshot dataSnapshot, @Nullable String s) {
                 if (dataSnapshot.exists()) {
+                    Log.i(TAG, "added");
+
                     Object mUid = dataSnapshot.child("uid").getValue();
                     Object messageText = dataSnapshot.child("message").getValue();
                     Object name = dataSnapshot.child("name").getValue();
                     Object username = dataSnapshot.child("username").getValue();
                     Object type = dataSnapshot.child("type").getValue();
                     Object status = dataSnapshot.child("status").getValue();
-                    HashMap<String, Object> map = new HashMap<>();
-                    map.put("status", ChatMessage.Status.READ);
-                    dataSnapshot.getRef().updateChildren(map);
+                    if (mUid != null && !mUid.toString().equals(auth.getUid()) && status != null && ChatMessage.Status.valueOf(status.toString().toUpperCase()) != ChatMessage.Status.READ) {
+                        HashMap<String, Object> map = new HashMap<>();
+                        map.put("status", ChatMessage.Status.READ);
+                        dataSnapshot.getRef().updateChildren(map);
+                    }
                     ChatMessage message;
                     if (messageText != null && name != null && username != null && mUid != null && type != null && status != null) {
                         ChatMessage.Type chatType = ChatMessage.Type.valueOf(type.toString().toUpperCase());
                         if (chatType == ChatMessage.Type.TEXT || (chatType == ChatMessage.Type.LEAVE && isAnon)) {
-                            message = new ChatMessage(messageText.toString(), username.toString(), mUid.toString(), name.toString(), chatType, ChatMessage.Status.valueOf(status.toString().toUpperCase()));
+                            message = new ChatMessage(dataSnapshot.getKey(), messageText.toString(), username.toString(), mUid.toString(), name.toString(), chatType, ChatMessage.Status.valueOf(status.toString().toUpperCase()));
                             messages.add(message);
                             adapter.notifyDataSetChanged();
                             recyclerView.scrollToPosition(messages.size()-1);
@@ -222,7 +227,37 @@ public class ChatActivity extends AppCompatActivity {
                     }
                 }
             }
-        });
+
+            @Override
+            public void onChildChanged(@NonNull DataSnapshot dataSnapshot, @Nullable String s) {
+                super.onChildChanged(dataSnapshot, s);
+                if (dataSnapshot.exists()) {
+                    Log.i(TAG, "changed");
+
+                    String key = dataSnapshot.getKey();
+                    for (int i = messages.size() - 1; i >= 0; i--) {
+                        if (messages.get(i).getId().equals(key)) {
+                            messages.get(i).setStatus(ChatMessage.Status.READ);
+                            adapter.notifyDataSetChanged();
+                        }
+                    }
+                }
+            }
+        };
+
+        //chatRef.orderByKey().addChildEventListener(messageListener);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        chatRef.removeEventListener(messageListener);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        chatRef.orderByKey().addChildEventListener(messageListener);
     }
 
     private void handleTyping(boolean b) {

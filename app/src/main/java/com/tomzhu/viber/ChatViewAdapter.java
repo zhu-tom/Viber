@@ -79,6 +79,7 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
     public void onBindViewHolder(@NonNull final ChatViewHolder holder, int position) {
         ChatMessage currMessage = messages.get(position);
         int type = getItemViewType(position);
+        holder.setStatus(null);
 
         if (getItemViewType(position) == ANNOUNCEMENT) {
             holder.setAnnouncement(currMessage.getMessage());
@@ -87,6 +88,9 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
             switch (type) {
                 case SENDER_TOP:
                     holder.setUsername("Me");
+                    if (position == getItemCount()-1) {
+                        holder.setStatus(currMessage.getStatus() == ChatMessage.Status.READ ? "Read":"Sent");
+                    }
                     break;
                 case RECEIVER_TOP:
                     holder.setUsername(currMessage.getSenderName());
@@ -130,21 +134,22 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
         ChatMessage currMess = messages.get(position);
         if (currMess.getType() == ChatMessage.Type.TEXT) {
             if (currMess.getSenderUid().equals(currUid)) {
-                if (position == getItemCount()) {
-                    return SENDER_END;
-                } else if (messages.size() > 0 && messages.get(position-1).getSenderUid().equals(currMess.getSenderUid())) {
-                    return SENDER_CONT;
-                } else {
+                if (position == 0 || (position > 0 && !messages.get(position-1).getSenderUid().equals(currMess.getSenderUid()))) {
                     return SENDER_TOP;
                 }
+                else if (position == getItemCount()-1) {
+                    return SENDER_END;
+                }
+                return SENDER_CONT;
             } else {
                 if (position == getItemCount()) {
                     return RECEIVER_END;
-                } else if (messages.get(position-1).getSenderUid().equals(currMess.getSenderUid())) {
-                    return RECEIVER_CONT;
-                } else {
-                    return RECEIVER_TOP;
                 }
+                else if (position == 0 || (position > 0 && !messages.get(position-1).getSenderUid().equals(currMess.getSenderUid()))) {
+                    return RECEIVER_TOP;
+
+                }
+                return RECEIVER_CONT;
             }
         }
         else if (currMess.getType() == ChatMessage.Type.LEAVE) {
@@ -192,7 +197,14 @@ public class ChatViewAdapter extends RecyclerView.Adapter<ChatViewAdapter.ChatVi
         }
 
         public void setStatus(String status) {
-            if (this.status != null) this.status.setText(status);
+            if (this.status != null) {
+                if (status == null) {
+                    this.status.setVisibility(View.GONE);
+                    return;
+                }
+                this.status.setText(status);
+                this.status.setVisibility(View.VISIBLE);
+            }
         }
     }
 }
