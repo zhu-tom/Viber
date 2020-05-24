@@ -45,6 +45,8 @@ public class FriendsViewAdapter extends RecyclerView.Adapter<FriendsViewAdapter.
     public void onBindViewHolder(@NonNull FriendsViewHolder holder, int position) {
         FriendItem currItem = items.get(position);
 
+        holder.setLastMessage(currItem.getLastMessage());
+
         db.getReference("/Users/" + currItem.getUid()).addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {

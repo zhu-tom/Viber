@@ -96,8 +96,29 @@ public class FriendsFragment extends Fragment {
                     String uid = dataSnapshot.getKey();
                     Object chatId = dataSnapshot.child("chatId").getValue();
                     if (chatId != null) {
-                        items.add(new FriendItem(uid, chatId.toString()));
-                        adapter.notifyDataSetChanged();
+                        String key = chatId.toString();
+                        db.getReference("/Chats/" + key + "/messages").orderByKey().limitToLast(1).addValueEventListener(new ValueEventListener() {
+                            @Override
+                            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                                if (dataSnapshot.exists()) {
+                                    for (DataSnapshot child : dataSnapshot.getChildren()) {
+                                        Object message = child.child("message").getValue();
+                                        if (message != null) {
+                                            items.add(new FriendItem(uid, key, message.toString()));
+                                            adapter.notifyDataSetChanged();
+                                            break;
+                                        }
+                                    }
+                                }
+                                items.add(new FriendItem(uid, key, ""));
+                                adapter.notifyDataSetChanged();
+                            }
+
+                            @Override
+                            public void onCancelled(@NonNull DatabaseError databaseError) {
+
+                            }
+                        });
                     }
                 }
             }

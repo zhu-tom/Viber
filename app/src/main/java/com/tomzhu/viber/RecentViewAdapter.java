@@ -5,6 +5,7 @@ import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.media.Image;
 import android.net.Uri;
+import android.provider.ContactsContract;
 import android.service.autofill.AutofillService;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -146,12 +147,38 @@ public class RecentViewAdapter extends RecyclerView.Adapter<RecentViewAdapter.Re
     private void setAddListener(RecentViewHolder holder, RecentItem currItem) {
         holder.setButtonImg(R.drawable.baseline_person_add_white_18dp);
         holder.setOnAddListener(v -> {
-            HashMap<String, Object> map = new HashMap<>();
-            map.put("uid", currUid);
-            map.put("datetime", new Date().getTime());
-            map.put("chatId", currItem.getChatId());
-            DatabaseReference pushPos = db.getReference("/Users/" + currItem.getUid() + "/friendRequests").push();
-            pushPos.setValue(map);
+            db.getReference("/Users/" + currUid + "/friendRequests").addValueEventListener(new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                    if (dataSnapshot.exists()) {
+                        for (DataSnapshot snapshot : dataSnapshot.getChildren()) {
+                            Object uid = snapshot.child("uid").getValue();
+                            snapshot.getRef().removeValue();
+                            if (uid != null) {
+                                if (uid.toString().equals(currItem.getUid())) { // other user already sent request
+                                    HashMap<String, String> map = new HashMap<>();
+                                    map.put("chatId", currItem.getChatId());
+                                    db.getReference("/Users/" + currUid + "/friends/" + currItem.getUid()).setValue(map);
+                                    db.getReference("/Users/" + currItem.getUid() + "/friends/" + currUid).setValue(map);
+                                    return;
+                                }
+                            }
+                        }
+                        // add request
+                        HashMap<String, Object> map = new HashMap<>();
+                        map.put("uid", currUid);
+                        map.put("datetime", new Date().getTime());
+                        map.put("chatId", currItem.getChatId());
+                        DatabaseReference pushPos = db.getReference("/Users/" + currItem.getUid() + "/friendRequests").push();
+                        pushPos.setValue(map);
+                    }
+                }
+
+                @Override
+                public void onCancelled(@NonNull DatabaseError databaseError) {
+
+                }
+            });
         });
     }
 
